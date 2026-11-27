@@ -50,7 +50,20 @@ def build_finder_suffix(agent_role: AgentRole, hints: list[SastHint] | None = No
 
 
 def build_verifier_prompt(bundle: ReviewBundle, candidate: FinderCandidate) -> str:
-    chunks = [c.model_dump() for c in bundle.ast_chunks if c.file == candidate.file]
+    chunks = [
+        c.model_dump()
+        for c in bundle.ast_chunks
+        if c.file == candidate.file
+        and c.line_start <= candidate.line_end
+        and candidate.line_start <= c.line_end
+    ] or [c.model_dump() for c in bundle.ast_chunks if c.file == candidate.file]
+    hunks = [
+        h.model_dump()
+        for h in bundle.hunks
+        if h.file == candidate.file
+        and h.line_start <= candidate.line_end
+        and candidate.line_start <= h.line_end
+    ] or [h.model_dump() for h in bundle.hunks if h.file == candidate.file]
     return (
         GUARDRAILS
         + "Verify exactly one candidate. First try to DISPROVE it using guards, sanitizers, "
@@ -62,7 +75,7 @@ def build_verifier_prompt(bundle: ReviewBundle, candidate: FinderCandidate) -> s
             {
                 "candidate": candidate.model_dump(),
                 "ast_and_callers": chunks,
-                "hunks": [h.model_dump() for h in bundle.hunks if h.file == candidate.file],
+                "hunks": hunks,
             },
             sort_keys=True,
         )

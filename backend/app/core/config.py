@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     vllm_model: str = "Qwen/Qwen3-8B-AWQ"
     vllm_schema_mode: Literal["guided_json", "structured_outputs"] = "structured_outputs"
     vllm_timeout_seconds: float = Field(default=120, gt=0)
+    vllm_max_model_len: int = Field(default=16384, ge=1024)
     vllm_max_tokens: int = Field(default=4096, ge=256)
     verifier_concurrency: int = Field(default=4, ge=1, le=16)
     max_candidates_per_agent: int = Field(default=20, ge=1, le=100)

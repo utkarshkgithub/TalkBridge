@@ -141,3 +141,15 @@ def test_uncertain_cannot_reach_publication_threshold(bundle, candidate):
             assert result.findings[0].verification.calibrated_confidence == 79
 
     asyncio.run(run())
+
+
+def test_verifier_scopes_context_to_overlapping_chunks(bundle, candidate):
+    unrelated = bundle.ast_chunks[0].model_copy(
+        update={"line_start": 200, "line_end": 220, "symbol": "unrelated_fn", "source": "UNRELATED"}
+    )
+    bundle.ast_chunks.append(unrelated)
+    from app.llm.prompts import build_verifier_prompt
+
+    prompt = build_verifier_prompt(bundle, candidate)
+    assert "unrelated_fn" not in prompt
+    assert "UNRELATED" not in prompt

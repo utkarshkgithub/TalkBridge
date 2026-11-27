@@ -92,6 +92,21 @@ def test_structured_failure(kind):
     asyncio.run(run())
 
 
+def test_budget_respects_vllm_context_window():
+    async def run():
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda _: pytest.fail("Should reject before HTTP"))
+        ) as http:
+            client = VLLMClient(
+                Settings(_env_file=None, vllm_max_model_len=8192, vllm_max_tokens=4096), http
+            )
+            with pytest.raises(InferenceFailure) as error:
+                await client.generate("x" * 13000, FinderOutput, stage="finder", role="A")
+            assert error.value.error.code == "budget"
+
+    asyncio.run(run())
+
+
 @pytest.mark.live_vllm
 def test_live_four_finders_and_prefix_ttft(bundle):
     import os

@@ -29,7 +29,11 @@ class VLLMClient:
                 InferenceError(stage=stage, role=role, code=code, message=message)
             )
 
-        if len(prompt) > self.settings.prompt_max_chars:
+        max_chars = min(
+            self.settings.prompt_max_chars,
+            max(1000, (self.settings.vllm_max_model_len - self.settings.vllm_max_tokens) * 3),
+        )
+        if len(prompt) > max_chars:
             raise fail("budget", "Review exceeds the configured prompt budget")
         payload: dict[str, Any] = {
             "model": self.settings.vllm_model,
