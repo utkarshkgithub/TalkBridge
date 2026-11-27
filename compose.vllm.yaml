@@ -1,0 +1,32 @@
+# Optional Linux/NVIDIA inference host. The Mac backend can use a remote URL instead.
+services:
+  vllm:
+    image: vllm/vllm-openai:v0.15.0
+    profiles: [inference]
+    command:
+      - --model
+      - Qwen/Qwen3-8B-AWQ
+      - --revision
+      - 4da05a8edb55c6046cce958586c33b61da07bb79
+      - --served-model-name
+      - Qwen/Qwen3-8B-AWQ
+      - --enable-prefix-caching
+      - --max-model-len
+      - "16384"
+      - --gpu-memory-utilization
+      - "0.85"
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - talkbridge_model_cache:/root/.cache/huggingface
+    shm_size: 2gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  talkbridge_model_cache:

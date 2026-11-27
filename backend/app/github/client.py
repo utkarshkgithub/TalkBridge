@@ -17,26 +17,50 @@ class GitHubFetcher:
     def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
         self.settings = settings
         self.client = client
+        self._identity: tuple[int, str] | None = None
 
-    async def fetch(self, context: PRContext) -> PRSource:
-        if not context.installation_id or not self.settings.github_app_id:
-            raise RuntimeError("GitHub App ID, private key, and installation ID are required")
+    def _app_token(self) -> str:
         now = int(time.time())
-        token = jwt.encode(
+        return jwt.encode(
             {"iat": now - 60, "exp": now + 540, "iss": self.settings.github_app_id},
             self.settings.github_private_key.get_secret_value().replace("\\n", "\n"),
             algorithm="RS256",
         )
+
+    async def app_identity(self) -> tuple[int, str]:
+        """Resolve the authenticated App, not a user-supplied review marker."""
+        if self._identity is None:
+            response = await self.client.get(
+                "/app", headers={"Authorization": f"Bearer {self._app_token()}"}
+            )
+            response.raise_for_status()
+            data = response.json()
+            self._identity = (int(data["id"]), str(data["slug"]))
+        return self._identity
+
+    async def installation_headers(
+        self, context: PRContext, *, write: bool = False
+    ) -> dict[str, str]:
+        if not context.installation_id or not self.settings.github_app_id:
+            raise RuntimeError("GitHub App ID, private key, and installation ID are required")
+        token = self._app_token()
         response = await self.client.post(
             f"/app/installations/{context.installation_id}/access_tokens",
             headers={"Authorization": f"Bearer {token}"},
             json={
                 "repositories": [context.repo_full_name.split("/")[1]],
-                "permissions": {"contents": "read", "pull_requests": "read"},
+                "permissions": (
+                    {"contents": "read", "pull_requests": "write", "checks": "write"}
+                    if write
+                    else {"contents": "read", "pull_requests": "read"}
+                ),
             },
         )
         response.raise_for_status()
-        headers = {"Authorization": f"Bearer {response.json()['token']}"}
+        return {"Authorization": f"Bearer {response.json()['token']}"}
+
+    async def fetch(self, context: PRContext) -> PRSource:
+        headers = await self.installation_headers(context)
         repo = f"/repos/{context.repo_full_name}"
         pr = f"{repo}/pulls/{context.pr_number}"
         metadata = await self._get(pr, headers)

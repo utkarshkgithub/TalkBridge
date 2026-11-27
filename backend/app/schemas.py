@@ -139,3 +139,80 @@ class ReviewTelemetry(Contract):
     prompt_tokens: int = Field(default=0, ge=0)
     cached_tokens: int = Field(default=0, ge=0)
     estimated_cost_usd: float = Field(default=0, ge=0)
+    inference_valid_calls: int = Field(default=0, ge=0)
+    inference_failed_calls: int = Field(default=0, ge=0)
+    verifier_attempts: int = Field(default=0, ge=0)
+    verifier_refutations: int = Field(default=0, ge=0)
+
+
+class InferenceError(Contract):
+    stage: Literal["finder", "verifier"]
+    role: str
+    code: Literal["timeout", "http", "invalid_output", "budget"]
+    message: str
+
+
+class InferenceUsage(Contract):
+    prompt_tokens: int = Field(default=0, ge=0)
+    cached_tokens: int | None = Field(default=None, ge=0)
+    latency_ms: float = Field(default=0, ge=0)
+
+
+class FinderBatch(Contract):
+    output: FinderOutput = Field(default_factory=FinderOutput)
+    usage: list[InferenceUsage] = Field(default_factory=list)
+    errors: list[InferenceError] = Field(default_factory=list)
+
+
+class VerifiedCandidate(Contract):
+    candidate: FinderCandidate
+    verification: VerifierOutput
+
+
+class VerificationBatch(Contract):
+    findings: list[VerifiedCandidate] = Field(default_factory=list)
+    usage: list[InferenceUsage] = Field(default_factory=list)
+    errors: list[InferenceError] = Field(default_factory=list)
+
+
+class PublishResult(Contract):
+    dry_run: bool = True
+    inline_comments: list[dict[str, str | int]] = Field(default_factory=list)
+    summary: str = ""
+    check: dict[str, str] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ReviewResult(Contract):
+    bundle: ReviewBundle
+    findings: list[RankedFinding]
+    telemetry: ReviewTelemetry
+    errors: list[InferenceError] = Field(default_factory=list)
+    publication: PublishResult | None = None
+
+
+class EvaluationCase(Contract):
+    id: str
+    dataset: Literal["primevul_paired", "code_security"]
+    provenance: str
+    commit_sha: str | None = None
+    cve_id: str | None = None
+    normalized_code_hash: str
+    vulnerable: bool
+    cwe_ids: list[str]
+    source: PRSource
+
+
+class EvaluationPrediction(Contract):
+    id: str
+    vulnerable: bool
+    cwe_ids: list[str]
+    score: Confidence
+    predicted_cwe: str | None = None
+    latency_ms: float = Field(ge=0)
+    calls: int = Field(ge=0)
+    valid_calls: int = Field(ge=0)
+    verifier_refuted: bool = False
+    verifier_attempts: int = Field(default=0, ge=0)
+    verifier_refutations: int = Field(default=0, ge=0)
+    errors: list[InferenceError] = Field(default_factory=list)

@@ -10,11 +10,13 @@ TalkBridge is a developer platform that plugs straight into GitHub Pull Requests
 ---
 
 
-## Current implementation: Brick 1
+## Current implementation: Brick 2 in progress
 
 Brick 1 implements signed GitHub webhook intake, bounded asyncio workers, diff cleaning,
-Tree-sitter context extraction, local Semgrep hints, and adaptive review depth. Bricks 2 through 4
-below describe planned work. The frontend remains the existing Next.js scaffold until Brick 3.
+Tree-sitter context extraction, local Semgrep hints, and adaptive review depth. Brick 2 adds
+the async vLLM client, isolated finders, adversarial verification, ranking and GitHub publication.
+Its offline flow and held-out dataset are implemented; live 8B baseline gates remain pending.
+Bricks 3 and 4 remain planned. The frontend stays the existing Next.js scaffold until Brick 3.
 
 This college-project profile uses free local tools, a backend virtual environment, and Docker
 PostgreSQL. It requires no paid API, Redis, or Celery. PostgreSQL is provisioned now; review
@@ -61,14 +63,37 @@ By default, whitespace-only edits are excluded while preserving Python indentati
 and token boundaries. To review style changes, set `ENFORCE_STYLE_DIFF=true` or include
 `<!-- talkbridge: enforce-style -->` in `REVIEW.md` (or fallback `CLAUDE.md`).
 
+### Enable Brick 2 reviews
+
+Set `REVIEW_ENABLED=true` in the backend environment to run Stages 0 through 4. Configure
+`VLLM_BASE_URL`, `VLLM_MODEL`, and optionally `VLLM_API_KEY` for an existing inference server.
+`VLLM_SCHEMA_MODE=structured_outputs` supports current vLLM; `guided_json` supports older servers.
+The default, free model is Qwen3-8B-AWQ without project LoRA fine-tuning.
+See [evaluation/README.md](./evaluation/README.md) for the optional NVIDIA Docker service,
+live cache tests, held-out data provenance, and baseline commands.
+
+Publication defaults to a dry run. To publish live reviews, set `GITHUB_PUBLISH_ENABLED=true`
+and grant the GitHub App Contents read, Pull requests write, and Checks write permissions.
+Reinstall or approve the App permission update on the target repository. Reviews post findings
+at confidence 80 or above, one review summary, and a completed neutral check. Invalid inline
+anchors fall back to the summary. Lower scores remain in the in-memory result, with persistence
+scheduled for Brick 3. Inference failures, incomplete SAST scans, missing context, and candidate-budget errors are
+visible as partial reviews. `GET /health` remains process health only.
+
+Worker queue and results remain ephemeral. GitHub publication checks the current head, serializes
+writes within this process, and deduplicates its own bot reviews by head SHA. A retry can repair
+a missing neutral check; checks are scoped to the authenticated App. Multiple API instances and automatic durable retries are not supported.
+`SANDBOX_TEST_ENABLED` exposes a Deep-mode hook for an explicitly provided isolated runner;
+no generated test code executes by default. Replay and LoRA routing belong to later bricks.
+
 ### Checks before each phase commit
 
 ```bash
 # Repository root, after uv sync in backend.
-backend/.venv/bin/pytest tests/brick1 backend/tests -v
-backend/.venv/bin/mypy --config-file backend/pyproject.toml backend/app
-backend/.venv/bin/ruff check --config backend/pyproject.toml backend/app backend/tests tests
-backend/.venv/bin/ruff format --check --config backend/pyproject.toml backend/app backend/tests tests
+backend/.venv/bin/pytest -v
+backend/.venv/bin/mypy --config-file backend/pyproject.toml backend/app evaluation
+backend/.venv/bin/ruff check --config backend/pyproject.toml backend/app backend/tests tests evaluation
+backend/.venv/bin/ruff format --check --config backend/pyproject.toml backend/app backend/tests tests evaluation
 cd backend
 uv run python -m build --wheel --no-isolation
 cd ../frontend

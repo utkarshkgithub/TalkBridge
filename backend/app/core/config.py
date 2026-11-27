@@ -38,6 +38,17 @@ class Settings(BaseSettings):
     lora_enabled: bool = False
     demo_replay_mode: bool = False
     sandbox_test_enabled: bool = False
+    review_enabled: bool = False
+    github_publish_enabled: bool = False
+    vllm_base_url: str = "http://localhost:8001/v1"
+    vllm_api_key: SecretStr = SecretStr("")
+    vllm_model: str = "Qwen/Qwen3-8B-AWQ"
+    vllm_schema_mode: Literal["guided_json", "structured_outputs"] = "structured_outputs"
+    vllm_timeout_seconds: float = Field(default=120, gt=0)
+    vllm_max_tokens: int = Field(default=4096, ge=256)
+    verifier_concurrency: int = Field(default=4, ge=1, le=16)
+    max_candidates_per_agent: int = Field(default=20, ge=1, le=100)
+    prompt_max_chars: int = Field(default=100000, ge=1000)
 
     @field_validator("database_url")
     @classmethod

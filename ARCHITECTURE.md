@@ -12,6 +12,12 @@ No paid services are required. SQLite is not part of this profile. Review persis
 scheduled for Brick 3. The local queue and delivery cache are intentionally ephemeral and require
 one API process. See [BUILD_STATUS.md](./BUILD_STATUS.md) for completed work.
 
+Brick 2 uses Qwen3-8B-AWQ without project fine-tuning. Modern vLLM uses
+`structured_outputs={"json": schema}` because `guided_json` was removed in v0.12.
+The legacy transport remains selectable and tested with identical schemas. See
+[evaluation/README.md](./evaluation/README.md) for the versioned inference setup and live gates.
+Prefix byte identity permits cache reuse; actual TTFT improvements require live measurement.
+
 ## 1. Architectural Principles & Hard Invariants
 
 1. **Zero-Token Fast Path (Brick 1 Isolation):** Stage 0 (webhook validation, diff cleaning, Tree-sitter AST slicing, Semgrep SAST) must operate deterministically with zero LLM dependencies.

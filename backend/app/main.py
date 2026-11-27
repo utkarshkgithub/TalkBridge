@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import httpx
@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
 from app.github.client import GitHubFetcher
+from app.schemas import PRSource, ReviewBundle, ReviewResult
 from app.webhooks.github import DeliveryCache, router
 from app.workers.tasks import ReviewWorker
 
@@ -24,9 +25,24 @@ def create_app(settings: Settings | None = None, worker: ReviewWorker | None = N
             if worker is None:
                 from app.pipeline.stage0 import Stage0
 
+                github = GitHubFetcher(settings, client)
+                stage0 = Stage0(settings)
+                processor: Callable[[PRSource], Awaitable[ReviewBundle | ReviewResult]] = stage0.run
+                llm_http = httpx.AsyncClient()
+                if settings.review_enabled:
+                    from app.agents.orchestrator import ReviewOrchestrator
+                    from app.github.pr_publisher import PRPublisher
+                    from app.llm.vllm_client import VLLMClient
+
+                    orchestrator = ReviewOrchestrator(
+                        stage0,
+                        VLLMClient(settings, llm_http),
+                        PRPublisher(github, enabled=settings.github_publish_enabled),
+                    )
+                    processor = orchestrator.run
                 app.state.worker = ReviewWorker(
-                    GitHubFetcher(settings, client),
-                    Stage0(settings).run,
+                    github,
+                    processor,
                     queue_size=settings.worker_queue_size,
                     count=settings.worker_count,
                 )
@@ -35,6 +51,8 @@ def create_app(settings: Settings | None = None, worker: ReviewWorker | None = N
                 yield
             finally:
                 await app.state.worker.close()
+                if worker is None:
+                    await llm_http.aclose()
 
     app = FastAPI(title="TalkBridge API", lifespan=lifespan)
     app.state.settings = settings

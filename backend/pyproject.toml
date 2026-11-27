@@ -32,6 +32,9 @@ dev = [
     "pytest>=9.2.0",
     "ruff>=0.17.6",
 ]
+eval = [
+    "pyarrow>=26.0.1",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -55,5 +58,5 @@ strict = true
 files = ["app"]
 
 [[tool.mypy.overrides]]
-module = ["certifi", "tree_sitter.*"]
+module = ["certifi", "tree_sitter.*", "pyarrow", "pyarrow.*"]
 ignore_missing_imports = true

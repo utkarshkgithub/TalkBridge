@@ -6,7 +6,7 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
-from app.schemas import PRContext, PRSource, ReviewBundle
+from app.schemas import PRContext, PRSource, ReviewBundle, ReviewResult
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class ReviewWorker:
     def __init__(
         self,
         fetcher: SourceFetcher,
-        processor: Callable[[PRSource], Awaitable[ReviewBundle]],
+        processor: Callable[[PRSource], Awaitable[ReviewBundle | ReviewResult]],
         *,
         queue_size: int = 100,
         count: int = 1,
@@ -29,7 +29,7 @@ class ReviewWorker:
         self.queue: asyncio.Queue[PRContext] = asyncio.Queue(maxsize=queue_size)
         self.count = count
         self.tasks: list[asyncio.Task[None]] = []
-        self.results: OrderedDict[str, ReviewBundle] = OrderedDict()
+        self.results: OrderedDict[str, ReviewBundle | ReviewResult] = OrderedDict()
         self.failures: OrderedDict[str, str] = OrderedDict()
 
     async def start(self) -> None:
