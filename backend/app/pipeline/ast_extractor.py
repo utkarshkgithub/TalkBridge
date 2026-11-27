@@ -2,8 +2,11 @@
 
 import importlib
 import re
+from collections import defaultdict
 from collections.abc import Iterator, Mapping
+from functools import lru_cache
 from pathlib import PurePosixPath
+from typing import NamedTuple
 
 from tree_sitter import Language, Node, Parser
 
@@ -97,26 +100,47 @@ def _called_names(node: Node, source: bytes) -> set[str]:
     return names
 
 
+class _IndexedFunction(NamedTuple):
+    node: Node
+    symbol: str
+    signature: str
+    calls: set[str]
+
+
+@lru_cache(maxsize=16)
+def _language(module: str, factory: str) -> Language:
+    return Language(getattr(importlib.import_module(module), factory)())
+
+
 def extract_context(
     hunks: list[CleanedHunk],
     files: Mapping[str, str],
     *,
     max_lines: int = 200,
 ) -> list[AstChunk]:
-    parsed: dict[str, tuple[str, bytes, list[Node]]] = {}
+    parsed: dict[str, tuple[str, list[_IndexedFunction]]] = {}
+    callers_by_target: dict[str, list[tuple[str, int, str]]] = defaultdict(list)
+    defs_by_name: dict[str, list[tuple[str, int, str]]] = defaultdict(list)
     for path in sorted({h.file for h in hunks} & files.keys()):
         source = files[path].encode()
         grammar = GRAMMARS.get(PurePosixPath(path).suffix.lower())
         if grammar is None:
             continue
         language, module, factory = grammar
-        tree = Parser(Language(getattr(importlib.import_module(module), factory)())).parse(source)
-        if not tree.root_node.has_error:
-            parsed[path] = (
-                language,
-                source,
-                [node for node in walk(tree.root_node) if node.type in FUNCTIONS],
-            )
+        tree = Parser(_language(module, factory)).parse(source)
+        indexed: list[_IndexedFunction] = []
+        for node in walk(tree.root_node):
+            if node.type not in FUNCTIONS or node.has_error:
+                continue
+            symbol = _name(node, source)
+            signature = f"{path}:{node.start_point.row + 1} {_signature(node, source)}"
+            calls = _called_names(node, source)
+            indexed.append(_IndexedFunction(node, symbol, signature, calls))
+            defs_by_name[symbol].append((path, node.id, signature))
+            for callee in calls:
+                callers_by_target[callee].append((path, node.id, signature))
+        if indexed:
+            parsed[path] = (language, indexed)
     chunks: list[AstChunk] = []
     seen: set[tuple[str, int, int]] = set()
     for hunk in hunks:
@@ -135,13 +159,13 @@ def extract_context(
             elif diff_line.kind == "deletion":
                 changed.add(max(1, min(cursor, len(lines))))
         for line in sorted(changed):
-            enclosing = []
+            enclosing: list[_IndexedFunction] = []
             if hunk.file in parsed:
-                language, source, functions = parsed[hunk.file]
+                language, functions = parsed[hunk.file]
                 enclosing = [
-                    node
-                    for node in functions
-                    if node.start_point.row < line <= node.end_point.row + 1
+                    fn
+                    for fn in functions
+                    if fn.node.start_point.row < line <= fn.node.end_point.row + 1
                 ]
             if not enclosing:
                 if any(
@@ -167,8 +191,8 @@ def extract_context(
                     )
                     seen.add(key)
                 continue
-            function = min(enclosing, key=lambda node: node.end_byte - node.start_byte)
-            symbol = _name(function, source)
+            entry = min(enclosing, key=lambda fn: fn.node.end_byte - fn.node.start_byte)
+            function, symbol, _, calls = entry
             if any(
                 chunk.file == hunk.file
                 and not chunk.fallback
@@ -185,17 +209,21 @@ def extract_context(
             if key in seen:
                 continue
             seen.add(key)
-            calls = _called_names(function, source)
-            callers, callees = [], []
-            for other_path, (_, other_source, other_functions) in parsed.items():
-                for other in other_functions:
-                    if other_path == hunk.file and other.id == function.id:
-                        continue
-                    signature = f"{other_path}:{other.start_point.row + 1} {_signature(other, other_source)}"
-                    if symbol in _called_names(other, other_source):
-                        callers.append(signature)
-                    if _name(other, other_source) in calls:
-                        callees.append(signature)
+            callers = sorted(
+                {
+                    sig
+                    for p, fid, sig in callers_by_target.get(symbol, ())
+                    if not (p == hunk.file and fid == function.id)
+                }
+            )[:20]
+            callees = sorted(
+                {
+                    sig
+                    for cname in calls
+                    for p, fid, sig in defs_by_name.get(cname, ())
+                    if not (p == hunk.file and fid == function.id)
+                }
+            )[:20]
             chunks.append(
                 AstChunk(
                     file=hunk.file,
@@ -204,8 +232,8 @@ def extract_context(
                     language=language,
                     symbol=symbol,
                     source="\n".join(lines[start - 1 : end]),
-                    caller_signatures=sorted(set(callers))[:20],
-                    callee_signatures=sorted(set(callees))[:20],
+                    caller_signatures=callers,
+                    callee_signatures=callees,
                 )
             )
     return chunks

@@ -86,3 +86,11 @@ def test_fallback_window_does_not_hide_changed_function() -> None:
     )
     chunks = extract_context(clean_diff(diff), {"a.py": source})
     assert any(chunk.symbol == "login" and not chunk.fallback for chunk in chunks)
+
+
+def test_unrelated_syntax_error_keeps_valid_function_ast() -> None:
+    source = "def broken(:\n    pass\n\ndef login(user):\n    return user\n"
+    chunks = extract_context(changed("a.py", 5), {"a.py": source})
+    assert len(chunks) == 1
+    assert chunks[0].symbol == "login"
+    assert not chunks[0].fallback
