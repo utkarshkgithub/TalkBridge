@@ -44,7 +44,7 @@ test("marketing examples and shared pixel appearance controls work", async ({
   await page.getByRole("tab", { name: "Security findings" }).click();
   await page.locator(".evidence-section").scrollIntoViewIfNeeded();
   await page.screenshot({
-    path: `/private/tmp/talkbridge-marketing-${testInfo.project.name}.png`,
+    path: testInfo.outputPath(`talkbridge-marketing-${testInfo.project.name}.png`),
   });
   await page.locator(".review-cta").scrollIntoViewIfNeeded();
   await expect(
@@ -53,11 +53,11 @@ test("marketing examples and shared pixel appearance controls work", async ({
       .getByRole("link", { name: "Start your review" }),
   ).toHaveAttribute("href", "/login");
   await page.screenshot({
-    path: `/private/tmp/talkbridge-cta-${testInfo.project.name}.png`,
+    path: testInfo.outputPath(`talkbridge-cta-${testInfo.project.name}.png`),
   });
   await page.locator(".footer-stage").scrollIntoViewIfNeeded();
   await page.screenshot({
-    path: `/private/tmp/talkbridge-footer-${testInfo.project.name}.png`,
+    path: testInfo.outputPath(`talkbridge-footer-${testInfo.project.name}.png`),
   });
   if (testInfo.project.name === "mobile") {
     await page.goto("/");
@@ -72,7 +72,9 @@ test("marketing examples and shared pixel appearance controls work", async ({
     expect(bounds!.width).toBe(page.viewportSize()!.width);
     expect(bounds!.height).toBe(page.viewportSize()!.height);
     await expect(menu.getByRole("link", { name: "Get started" })).toBeVisible();
-    await page.screenshot({ path: "/private/tmp/talkbridge-mobile-menu.png" });
+    await page.screenshot({
+      path: testInfo.outputPath("talkbridge-mobile-menu.png"),
+    });
     await page.keyboard.press("Escape");
     await expect(menu).not.toBeVisible();
     await expect(trigger).toBeFocused();
