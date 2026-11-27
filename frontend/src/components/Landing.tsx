@@ -1,11 +1,6 @@
-import { SiGithub, SiGitlab, SiBitbucket } from "react-icons/si";
 import Link from "next/link";
-import {
-  LuGitBranch as GitBranch,
-  LuShieldCheck as ShieldCheck,
-  LuSlidersHorizontal as SlidersHorizontal,
-  LuCheck as Check,
-} from "react-icons/lu";
+import { PixelIcon } from "./PixelIcon";
+import { SiGithub, SiGitlab, SiBitbucket } from "react-icons/si";
 import { PixelMark } from "./PixelMark";
 import { PixelBlocks } from "./PixelBlocks";
 import { ThemeToggle } from "./ThemeToggle";
@@ -44,7 +39,8 @@ export function Landing() {
               </a>
             </div>
             <div className="hero-note">
-              <Check size={14} /> Try the local demo. No model server required.
+              <PixelIcon name="check" size={16} /> Try the local demo. No model
+              server required.
             </div>
           </div>
           <div className="hero-blocks hero-blocks-left" aria-hidden="true">
@@ -87,25 +83,25 @@ export function Landing() {
           <div className="feature-grid">
             {[
               {
-                icon: GitBranch,
+                icon: "branch" as const,
                 title: "Start with the right context",
                 text: "Cleaned diffs and enclosing functions keep reviews focused on code that changed.",
               },
               {
-                icon: ShieldCheck,
+                icon: "shield" as const,
                 title: "Challenge every finding",
                 text: "Independent finders identify candidates. A skeptical verifier checks whether the evidence holds up.",
               },
               {
-                icon: SlidersHorizontal,
+                icon: "sliders" as const,
                 title: "Set your confidence threshold",
                 text: "Inspect findings, compare confidence, and read the suggested patch before taking action.",
               },
-            ].map(({ icon: Icon, title, text }, index) => (
+            ].map(({ icon, title, text }, index) => (
               <article key={title}>
                 <div className="feature-index">
                   <span>0{index + 1}</span>
-                  <Icon size={22} />
+                  <PixelIcon name={icon} size={24} />
                 </div>
                 <h3>{title}</h3>
                 <p>{text}</p>

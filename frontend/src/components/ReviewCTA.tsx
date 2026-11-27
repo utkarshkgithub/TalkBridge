@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LuArrowUpRight } from "react-icons/lu";
+import { PixelIcon } from "./PixelIcon";
 import { PixelMark } from "./PixelMark";
 
 const rows = [
@@ -38,7 +38,7 @@ export function ReviewCTA() {
                     (rowIndex === 2 ? (
                       <PixelMark />
                     ) : (
-                      <PixelReviewIcon kind={rowIndex} />
+                      <PixelIcon name={rowIndex === 0 ? "shield" : "file"} />
                     ))}
                   {label}
                 </span>
@@ -50,32 +50,9 @@ export function ReviewCTA() {
       <div className="review-cta-action">
         <p>Connect a repository or explore a recorded review.</p>
         <Link className="primary-link" href="/login">
-          Start your review <LuArrowUpRight size={16} />
+          Start your review <PixelIcon name="arrowUpRight" size={16} />
         </Link>
       </div>
     </section>
-  );
-}
-
-function PixelReviewIcon({ kind }: { kind: number }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      shapeRendering="crispEdges"
-      aria-hidden="true"
-    >
-      {kind === 0 ? (
-        <path
-          fillRule="evenodd"
-          d="M10 2h4v2h6v10h-2v4h-2v2h-2v2h-4v-2H8v-2H6v-4H4V4h6V2Zm0 4H6v8h2v4h2v2h4v-2h2v-4h2V6h-4V4h-4v2Zm4 3h2v4h-2v2h-4v-2H8v-2h2v2h2v-2h2V9Z"
-        />
-      ) : (
-        <path
-          fillRule="evenodd"
-          d="M4 2h12v2h2v2h2v16H4V2Zm2 2v16h12V8h-4V4H6Zm10 2h2v2h-2V6ZM8 10h6v2H8v-2Zm0 4h8v2H8v-2Zm0 4h6v2H8v-2Z"
-        />
-      )}
-    </svg>
   );
 }

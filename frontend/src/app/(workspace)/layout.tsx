@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
+export const metadata: Metadata = {
+  title: "Workspace",
+  robots: { index: false, follow: false },
+};
+
 export default function WorkspaceLayout({
   children,
 }: {

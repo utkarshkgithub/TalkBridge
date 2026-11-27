@@ -5118,3 +5118,11 @@ kbd {
     animation: none;
   }
 }
+
+/* Landing icons share the same square pixel grid and filled geometry. */
+.marketing-menu-trigger > svg,
+.marketing-menu-links svg,
+.marketing-menu-bottom svg {
+  width: 24px;
+  height: 24px;
+}

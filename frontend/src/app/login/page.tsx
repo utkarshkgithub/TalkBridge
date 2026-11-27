@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/LoginForm";
 import { demoEnabled, getUser } from "@/lib/auth/session";
 import { availableProviders } from "@/lib/auth/oauth";
+export const metadata: Metadata = {
+  title: "Sign in",
+  robots: { index: false, follow: false },
+};
+
 export default function Page(props: PageProps<"/login">) {
   return (
     <Suspense

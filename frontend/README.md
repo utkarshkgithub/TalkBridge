@@ -67,3 +67,11 @@ npm run test:e2e
 ```
 
 E2E tests require the frontend at port 3000, the replay-enabled backend at port 8000, local PostgreSQL, and Chrome. They cover anonymous access rejection, test login, both themes, review interactions, connections, pipeline, logout, and 404 rendering. Unit tests mock OAuth providers; live OAuth consent requires configured provider applications and is not completed by the test suite.
+
+## Search and crawler visibility
+
+Set `SITE_URL` to the public origin before the production build, or use the same public `AUTH_URL`. Canonical links, social cards, structured data, sitemap URLs, and `llms.txt` use this origin. Metadata is generated at build time, so rebuild after changing these variables.
+
+The production landing page is indexable when a non-local public origin is configured. Set `SITE_NOINDEX=true` for staging and preview deployments. Development, localhost, and deployments without a configured origin default to noindex and a blocked robots policy. The sitemap contains only the public landing page.
+
+Workspace pages, sign-in, and APIs use noindex metadata or `X-Robots-Tag` headers. They remain protected by authentication; crawler rules are not access controls. Public search and AI crawlers receive the same server-rendered landing content. `/llms.txt` provides a concise capability summary for assistants that choose to use it, without exposing private reviews or promising search rankings. The social preview image is a static asset and needs no runtime image generation.

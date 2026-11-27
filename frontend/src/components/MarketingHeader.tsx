@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
+import { PixelIcon } from "./PixelIcon";
 import { PixelMark } from "./PixelMark";
 const links = [
   { href: "#how-it-works", label: "How it works" },
@@ -44,14 +45,7 @@ export function MarketingHeader() {
               aria-label="Open site navigation"
               className="marketing-menu-trigger"
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                shapeRendering="crispEdges"
-                aria-hidden="true"
-              >
-                <path d="M3 5h18v2H3zM3 11h18v2H3zM3 17h18v2H3z" />
-              </svg>
+              <PixelIcon name="menu" size={24} />
             </Dialog.Trigger>
             <Dialog.Portal>
               <Dialog.Backdrop className="marketing-menu-backdrop" />
@@ -75,14 +69,7 @@ export function MarketingHeader() {
                     className="marketing-menu-close"
                     aria-label="Close site navigation"
                   >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      shapeRendering="crispEdges"
-                      aria-hidden="true"
-                    >
-                      <path d="M3 3h4v4h4v4h2V7h4V3h4v4h-4v4h-4v2h4v4h4v4h-4v-4h-4v-4h-2v4H7v4H3v-4h4v-4h4v-2H7V7H3V3Z" />
-                    </svg>
+                    <PixelIcon name="close" size={24} />
                   </Dialog.Close>
                 </div>
                 <nav
@@ -96,7 +83,7 @@ export function MarketingHeader() {
                       onClick={() => setOpen(false)}
                     >
                       {link.label}
-                      <PixelArrow />
+                      <PixelIcon name="chevronRight" />
                     </a>
                   ))}
                 </nav>
@@ -107,14 +94,14 @@ export function MarketingHeader() {
                     className="marketing-menu-signin"
                     onClick={() => setOpen(false)}
                   >
-                    Sign in <PixelArrow />
+                    Sign in <PixelIcon name="chevronRight" />
                   </Link>
                   <Link
                     href="/login"
                     className="marketing-menu-start"
                     onClick={() => setOpen(false)}
                   >
-                    Get started <PixelArrow />
+                    Get started <PixelIcon name="chevronRight" />
                   </Link>
                 </div>
               </Dialog.Popup>
@@ -123,17 +110,5 @@ export function MarketingHeader() {
         </div>
       </div>
     </header>
-  );
-}
-function PixelArrow() {
-  return (
-    <svg
-      viewBox="0 0 16 24"
-      fill="currentColor"
-      shapeRendering="crispEdges"
-      aria-hidden="true"
-    >
-      <path d="M2 2h4v4h4v4h4v4h-4v4H6v4H2v-4h4v-4h4v-4H6V6H2V2Z" />
-    </svg>
   );
 }

@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
+import { site } from "@/lib/site";
 import "./globals.css";
 import "./workspace.css";
 
 export const metadata: Metadata = {
-  title: "TalkBridge | Code review workspace",
-  description:
-    "A focused workspace for verified code reviews, confidence controls, and pipeline insights.",
+  metadataBase: new URL(site.origin),
+  title: { default: site.title, template: "%s | TalkBridge" },
+  description: site.description,
+  applicationName: site.name,
+  robots: { index: false, follow: false },
+  referrer: "strict-origin-when-cross-origin",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -1,19 +1,14 @@
 "use client";
 import { useSyncExternalStore } from "react";
 import Link from "next/link";
-import {
-  LuShieldCheck,
-  LuBraces,
-  LuCircleCheck,
-  LuFileCode2,
-} from "react-icons/lu";
+import { PixelIcon } from "./PixelIcon";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { PixelMark } from "./PixelMark";
 const examples = [
   {
     id: "security",
     label: "Security findings",
-    icon: LuShieldCheck,
+    icon: "shield" as const,
     title: "SQL query interpolates untrusted input",
     file: "auth/login.py",
     score: "92/100",
@@ -26,7 +21,7 @@ const examples = [
   {
     id: "logic",
     label: "Logic & edge cases",
-    icon: LuBraces,
+    icon: "braces" as const,
     title: "Discount is accepted without bounds",
     file: "billing/discount.py",
     score: "88/100",
@@ -41,7 +36,7 @@ const examples = [
   {
     id: "clean",
     label: "Clean reviews",
-    icon: LuCircleCheck,
+    icon: "clean" as const,
     title: "Handle empty names in profile cards",
     file: "Clean sample",
     score: "No findings",
@@ -80,9 +75,9 @@ export function EvidenceShowcase() {
         className="evidence-showcase"
       >
         <TabsList aria-label="Review examples" className="evidence-tabs">
-          {examples.map(({ id, label, icon: Icon }) => (
+          {examples.map(({ id, label, icon }) => (
             <TabsTrigger key={id} value={id}>
-              <Icon size={24} />
+              <PixelIcon name={icon} size={24} />
               <span>{label}</span>
             </TabsTrigger>
           ))}
@@ -96,7 +91,7 @@ export function EvidenceShowcase() {
             <div className="evidence-facts">
               <article className="evidence-summary">
                 <div className="evidence-file">
-                  <LuFileCode2 size={16} />
+                  <PixelIcon name="file" size={16} />
                   {example.file}
                 </div>
                 <span className="example-label">ILLUSTRATIVE REPLAY</span>
