@@ -19,12 +19,18 @@ export function TelemetryCharts({
     .filter((review) => !isPartialReview(review))
     .reverse()
     .slice(-12);
-  const points = history
-    .map(
-      (r, i) =>
-        `${20 + i * (560 / Math.max(history.length - 1, 1))},${150 - healthScore(r) * 1.1}`,
-    )
-    .join(" ");
+  const coords =
+    history.length === 1
+      ? [
+          { x: 20, y: 150 - healthScore(history[0]) * 1.1 },
+          { x: 580, y: 150 - healthScore(history[0]) * 1.1 },
+        ]
+      : history.map((r, i) => ({
+          x: 20 + i * (560 / Math.max(history.length - 1, 1)),
+          y: 150 - healthScore(r) * 1.1,
+        }));
+  const points = coords.map((p) => `${p.x},${p.y}`).join(" ");
+  const lastX = coords[coords.length - 1]?.x ?? 20;
   const replay = telemetry?.model_profiles.includes("replay");
   return (
     <div className="charts-grid">
@@ -68,7 +74,7 @@ export function TelemetryCharts({
               />
             ))}
             <polygon
-              points={`20,165 ${points} ${20 + (history.length - 1) * (560 / Math.max(history.length - 1, 1))},165`}
+              points={`20,165 ${points} ${lastX},165`}
               fill="url(#health-fill)"
             />
             <polyline
@@ -80,7 +86,11 @@ export function TelemetryCharts({
             {history.map((r, i) => (
               <circle
                 key={r.id}
-                cx={20 + i * (560 / Math.max(history.length - 1, 1))}
+                cx={
+                  history.length === 1
+                    ? 300
+                    : 20 + i * (560 / Math.max(history.length - 1, 1))
+                }
                 cy={150 - healthScore(r) * 1.1}
                 r="4"
                 fill="var(--chart-color)"

@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { Dashboard } from "@/components/Dashboard";
 import { RepoHealthCard } from "@/components/RepoHealthCard";
+import { TelemetryCharts } from "@/components/TelemetryCharts";
 import { review, telemetry } from "./fixture";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -153,7 +154,7 @@ it("does not present incomplete reviews as clean or perfect health", async () =>
 });
 
 it("fetches only the selected review on detail pages", async () => {
-  const fetch = vi.fn(async (_url: string) => ({
+  const fetch = vi.fn<(...args: unknown[]) => unknown>(async () => ({
     ok: true,
     json: async () => review,
   }));
@@ -167,4 +168,12 @@ it("fetches only the selected review on detail pages", async () => {
     `/api/backend/reviews/${encodeURIComponent(review.id)}`,
     expect.objectContaining({ method: "GET" }),
   );
+});
+
+it("renders a full-width trend baseline for a single review", () => {
+  const { container } = render(
+    <TelemetryCharts telemetry={telemetry} reviews={[review]} />,
+  );
+  const polyline = container.querySelector("polyline");
+  expect(polyline?.getAttribute("points")).toMatch(/^20,.* 580,/);
 });
