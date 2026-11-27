@@ -111,3 +111,72 @@ def test_evaluation_reads_backend_environment(tmp_path, monkeypatch):
     monkeypatch.delenv("VLLM_BASE_URL", raising=False)
     monkeypatch.chdir(tmp_path.parent)
     assert run_eval.evaluation_settings().vllm_base_url == "http://127.0.0.1:8765/v1"
+
+
+def test_select_predicted_cwe_prefers_high_confidence_security_finding():
+    from app.schemas import (
+        FinderCandidate,
+        RankedFinding,
+        ReviewBundle,
+        ReviewResult,
+        ReviewTelemetry,
+        VerifierOutput,
+    )
+
+    from evaluation.run_eval import select_predicted_cwe
+
+    cases = [EvaluationCase.model_validate_json(s) for s in SPLIT.read_text().splitlines()]
+    bundle = ReviewBundle(
+        context=cases[0].source.context,
+        depth_mode="standard",
+        hunks=[],
+        ast_chunks=[],
+        sast_hints=[],
+        review_rules="",
+    )
+    logic = RankedFinding(
+        candidate=FinderCandidate(
+            file="a.py",
+            line_start=1,
+            line_end=1,
+            finding_id="B-1",
+            source_agent="B",
+            category="logic",
+            cwe_id=None,
+            confidence=92,
+            reasoning="Logic bug",
+        ),
+        verification=VerifierOutput(
+            finding_id="B-1",
+            verdict="confirmed",
+            refutation_attempt="Confirmed",
+            calibrated_confidence=92,
+            severity="important",
+        ),
+        tier="post_to_pr",
+    )
+    sec = RankedFinding(
+        candidate=FinderCandidate(
+            file="a.py",
+            line_start=1,
+            line_end=1,
+            finding_id="A-1",
+            source_agent="A",
+            category="security",
+            cwe_id="CWE-89",
+            confidence=88,
+            reasoning="SQLi",
+        ),
+        verification=VerifierOutput(
+            finding_id="A-1",
+            verdict="confirmed",
+            refutation_attempt="Confirmed",
+            calibrated_confidence=88,
+            severity="important",
+        ),
+        tier="post_to_pr",
+    )
+    score, cwe, refuted = select_predicted_cwe(
+        ReviewResult(bundle=bundle, findings=[logic, sec], telemetry=ReviewTelemetry())
+    )
+    assert score == 92 and cwe == "CWE-89" and not refuted

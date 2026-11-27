@@ -15,7 +15,7 @@ from app.agents.orchestrator import ReviewOrchestrator
 from app.config import Settings
 from app.llm.vllm_client import VLLMClient
 from app.pipeline.stage0 import Stage0
-from app.schemas import EvaluationCase, EvaluationPrediction
+from app.schemas import EvaluationCase, EvaluationPrediction, InferenceError
 
 from evaluation.prepare_testset import validate_cases
 
@@ -74,6 +74,25 @@ def metrics(rows: list[EvaluationPrediction]) -> dict[str, Any]:
     }
 
 
+def select_predicted_cwe(result: Any) -> tuple[int, str | None, bool]:
+    eligible = [f for f in result.findings if f.verification.verdict != "refuted"]
+    best = max(eligible, key=lambda f: f.verification.calibrated_confidence, default=None)
+    top_cwe = max(
+        (
+            f
+            for f in eligible
+            if f.candidate.cwe_id and f.verification.calibrated_confidence >= 80
+        ),
+        key=lambda f: f.verification.calibrated_confidence,
+        default=best,
+    )
+    return (
+        best.verification.calibrated_confidence if best else 0,
+        top_cwe.candidate.cwe_id if top_cwe else None,
+        any(f.verification.verdict == "refuted" for f in result.findings),
+    )
+
+
 async def evaluate(
     cases: list[EvaluationCase], settings: Settings, single: bool
 ) -> tuple[list[EvaluationPrediction], list[dict[str, Any]], dict[str, Any]]:
@@ -95,21 +114,47 @@ async def evaluate(
             start = time.perf_counter()
             bundle = await stage0.run(case.source)
             if bundle.sast_status != "completed":
-                raise RuntimeError("Benchmark requires a completed deterministic SAST scan")
+                sast_error = InferenceError(
+                    stage="finder",
+                    role="stage0",
+                    code="invalid_output",
+                    message=f"Deterministic SAST scan status: {bundle.sast_status}",
+                )
+                row = EvaluationPrediction(
+                    id=case.id,
+                    vulnerable=case.vulnerable,
+                    cwe_ids=case.cwe_ids,
+                    score=0,
+                    predicted_cwe=None,
+                    latency_ms=(time.perf_counter() - start) * 1000,
+                    calls=0,
+                    valid_calls=0,
+                    errors=[sast_error],
+                )
+                rows.append(row)
+                errors.append(
+                    {
+                        "id": case.id,
+                        "kind": "runtime_error",
+                        "prediction": row.model_dump(),
+                        "review": None,
+                    }
+                )
+                print(f"{index + 1}/{len(cases)} {case.id} sast={bundle.sast_status}", flush=True)
+                continue
             result = await orchestrator.review(bundle, single=single)
-            eligible = [f for f in result.findings if f.verification.verdict != "refuted"]
-            best = max(eligible, key=lambda f: f.verification.calibrated_confidence, default=None)
+            score, predicted_cwe, verifier_refuted = select_predicted_cwe(result)
             valid = result.telemetry.inference_valid_calls
             row = EvaluationPrediction(
                 id=case.id,
                 vulnerable=case.vulnerable,
                 cwe_ids=case.cwe_ids,
-                score=best.verification.calibrated_confidence if best else 0,
-                predicted_cwe=best.candidate.cwe_id if best else None,
+                score=score,
+                predicted_cwe=predicted_cwe,
                 latency_ms=(time.perf_counter() - start) * 1000,
                 calls=valid + len(result.errors),
                 valid_calls=valid,
-                verifier_refuted=any(f.verification.verdict == "refuted" for f in result.findings),
+                verifier_refuted=verifier_refuted,
                 verifier_attempts=result.telemetry.verifier_attempts,
                 verifier_refutations=result.telemetry.verifier_refutations,
                 errors=result.errors,
