@@ -20,14 +20,16 @@ def test_dedupe_gates_and_richest_patch(candidate):
         update={
             "finding_id": "D-1",
             "source_agent": "D",
+            "cwe_id": "cwe-89",
             "line_start": 7,
             "line_end": 8,
             "suggested_patch": "parameterized binding",
+            "unit_test": "def test_sqli(): ...",
         }
     )
     items = [
         verified(candidate, 88, severity="nit"),
-        verified(other, 85),
+        verified(other, 85, pre_existing=True),
         verified(candidate.model_copy(update={"finding_id": "B-1", "file": "b.py"}), 67),
         verified(candidate.model_copy(update={"finding_id": "C-1", "file": "c.py"}), 34),
         verified(
@@ -40,16 +42,19 @@ def test_dedupe_gates_and_richest_patch(candidate):
     kept = next(f for f in result if f.candidate.file == candidate.file)
     assert len(result) == 4 and kept.verification.calibrated_confidence == 88
     assert kept.verification.severity == "important"
+    assert kept.verification.pre_existing is True
     assert kept.candidate.suggested_patch == "parameterized binding"
+    assert kept.candidate.unit_test == "def test_sqli(): ..."
+    assert (kept.candidate.line_start, kept.candidate.line_end) == (4, 8)
     assert {f.candidate.file: f.tier for f in result} == {
         candidate.file: "post_to_pr",
         "b.py": "dashboard_only",
         "c.py": "discarded",
         "d.py": "discarded",
     }
-    assert severity_label(kept) == "🔴 Important"
-    kept.verification.pre_existing = True
     assert severity_label(kept) == "🟣 Pre-existing"
+    kept.verification.pre_existing = False
+    assert severity_label(kept) == "🔴 Important"
 
 
 @pytest.mark.parametrize(

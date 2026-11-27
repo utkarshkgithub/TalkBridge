@@ -10,19 +10,16 @@ def duplicate(a: VerifiedCandidate, b: VerifiedCandidate) -> bool:
         and x.line_start <= y.line_end + 3
         and y.line_start <= x.line_end + 3
         and x.category.casefold() == y.category.casefold()
-        and x.cwe_id == y.cwe_id
+        and (x.cwe_id or "").casefold() == (y.cwe_id or "").casefold()
     )
 
 
 def dedupe_rank(items: list[VerifiedCandidate]) -> list[RankedFinding]:
-    discarded = [
-        x
-        for x in items
-        if x.verification.verdict == "refuted" or x.verification.calibrated_confidence < 50
-    ]
+    discarded: list[VerifiedCandidate] = []
     groups: list[list[VerifiedCandidate]] = []
     for item in items:
-        if item in discarded:
+        if item.verification.verdict == "refuted" or item.verification.calibrated_confidence < 50:
+            discarded.append(item)
             continue
         touching = [g for g in groups if any(duplicate(item, x) for x in g)]
         merged = [item]
@@ -41,14 +38,21 @@ def dedupe_rank(items: list[VerifiedCandidate]) -> list[RankedFinding]:
             ),
         )
         patch = max(group, key=lambda x: len(x.candidate.suggested_patch or ""))
+        test_case = max(group, key=lambda x: len(x.candidate.unit_test or ""))
         candidate = best.candidate.model_copy(
-            update={"suggested_patch": patch.candidate.suggested_patch}
+            update={
+                "line_start": min(x.candidate.line_start for x in group),
+                "line_end": max(x.candidate.line_end for x in group),
+                "suggested_patch": patch.candidate.suggested_patch,
+                "unit_test": test_case.candidate.unit_test,
+            }
         )
         verification = best.verification.model_copy(
             update={
                 "severity": "important"
                 if any(x.verification.severity == "important" for x in group)
                 else "nit",
+                "pre_existing": any(x.verification.pre_existing for x in group),
             }
         )
         retained.append(
