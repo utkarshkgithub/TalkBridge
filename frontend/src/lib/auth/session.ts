@@ -1,8 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
-import { connection } from "next/server";
+import { connection, type NextRequest } from "next/server";
 import { redirect } from "next/navigation";
 import { db, hash, secret, type User } from "./store";
+
+const DEV_ORIGINS = new Set([
+  "http://127.0.0.1:3000",
+  "http://localhost:3000",
+]);
 
 export const SESSION_COOKIE = "talkbridge_session";
 export const cookieOptions = {
@@ -16,6 +21,24 @@ export function appUrl() {
   if (!configured && process.env.NODE_ENV === "production")
     throw new Error("AUTH_URL is required in production.");
   return new URL(configured || "http://127.0.0.1:3000").origin;
+}
+export function allowedOrigin(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+  if (process.env.AUTH_URL || process.env.NODE_ENV === "production")
+    return origin === appUrl();
+  return DEV_ORIGINS.has(origin);
+}
+export function requestOrigin(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  if (
+    origin &&
+    !process.env.AUTH_URL &&
+    process.env.NODE_ENV !== "production" &&
+    DEV_ORIGINS.has(origin)
+  )
+    return origin;
+  return appUrl();
 }
 export function demoEnabled() {
   return (

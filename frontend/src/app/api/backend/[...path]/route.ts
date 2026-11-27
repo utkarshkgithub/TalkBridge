@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { getUser, appUrl } from "@/lib/auth/session";
+import { allowedOrigin, getUser } from "@/lib/auth/session";
 
 async function proxy(
   request: NextRequest,
@@ -7,7 +7,7 @@ async function proxy(
 ) {
   if (!(await getUser()))
     return Response.json({ detail: "Sign in required" }, { status: 401 });
-  if (request.method === "POST" && request.headers.get("origin") !== appUrl())
+  if (request.method === "POST" && !allowedOrigin(request))
     return Response.json({ detail: "Invalid request origin" }, { status: 403 });
   const { path } = await params;
   const route = path.join("/");

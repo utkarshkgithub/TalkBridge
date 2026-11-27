@@ -258,4 +258,27 @@ describe("authentication boundaries", () => {
     vi.stubEnv("AUTH_ALLOWED_IDENTITIES", "");
     expect(await auth.getUser()).toBeNull();
   });
+  it("allows localhost and 127.0.0.1 origins in development when AUTH_URL is unset", async () => {
+    const saved = process.env.AUTH_URL;
+    delete process.env.AUTH_URL;
+    try {
+      const form = new FormData();
+      form.set("email", "demo@talkbridge.local");
+      form.set("password", "TalkBridgeDemo!2026");
+      const response = await routes.POST(
+        new NextRequest("http://localhost:3000/api/auth/demo", {
+          method: "POST",
+          headers: { origin: "http://localhost:3000" },
+          body: form,
+        }),
+        params("demo"),
+      );
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toBe(
+        "http://localhost:3000/dashboard",
+      );
+    } finally {
+      if (saved !== undefined) process.env.AUTH_URL = saved;
+    }
+  });
 });

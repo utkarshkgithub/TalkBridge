@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual, createHash } from "node:crypto";
 import {
+  allowedOrigin,
   appUrl,
   createSession,
   demoEnabled,
   getUser,
   logout,
+  requestOrigin,
 } from "@/lib/auth/session";
 import {
   availableProviders,
@@ -17,18 +19,15 @@ import {
 } from "@/lib/auth/oauth";
 import { db } from "@/lib/auth/store";
 
-function sameOrigin(request: NextRequest) {
-  return request.headers.get("origin") === appUrl();
-}
 function result(value: unknown, status = 200) {
   return NextResponse.json(value, {
     status,
     headers: { "Cache-Control": "no-store" },
   });
 }
-function fail(message: string, destination = "/login") {
+function fail(message: string, destination = "/login", origin = appUrl()) {
   return NextResponse.redirect(
-    new URL(`${destination}?error=${encodeURIComponent(message)}`, appUrl()),
+    new URL(`${destination}?error=${encodeURIComponent(message)}`, origin),
     303,
   );
 }
@@ -74,12 +73,13 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ action: string[] }> },
 ) {
-  if (!sameOrigin(request))
+  if (!allowedOrigin(request))
     return result({ error: "Invalid request origin" }, 403);
+  const origin = requestOrigin(request);
   const { action } = await params;
   if (action.length === 1 && action[0] === "logout") {
     await logout();
-    return NextResponse.redirect(new URL("/login", appUrl()), 303);
+    return NextResponse.redirect(new URL("/login", origin), 303);
   }
   if (action.length === 1 && action[0] === "demo") {
     if (!demoEnabled())
@@ -87,19 +87,24 @@ export async function POST(
     const form = await request.formData();
     const email = String(form.get("email") || "").slice(0, 254);
     const password = String(form.get("password") || "").slice(0, 256);
+    const attemptKey = email.trim().toLowerCase() || "__empty__";
     db().exec(
-      "CREATE TABLE IF NOT EXISTS attempts (id INTEGER PRIMARY KEY, count INTEGER NOT NULL, reset INTEGER NOT NULL)",
+      "CREATE TABLE IF NOT EXISTS demo_attempts (email TEXT PRIMARY KEY, count INTEGER NOT NULL, reset INTEGER NOT NULL)",
     );
     db()
       .prepare(
-        "INSERT INTO attempts VALUES (1,0,?) ON CONFLICT(id) DO UPDATE SET count=CASE WHEN reset<? THEN 0 ELSE count END,reset=CASE WHEN reset<? THEN excluded.reset ELSE reset END",
+        "INSERT INTO demo_attempts VALUES (?,0,?) ON CONFLICT(email) DO UPDATE SET count=CASE WHEN reset<? THEN 0 ELSE count END,reset=CASE WHEN reset<? THEN excluded.reset ELSE reset END",
       )
-      .run(Date.now() + 900000, Date.now(), Date.now());
+      .run(attemptKey, Date.now() + 900000, Date.now(), Date.now());
     const attempts = db()
-      .prepare("SELECT count FROM attempts WHERE id=1")
-      .get() as { count: number };
+      .prepare("SELECT count FROM demo_attempts WHERE email=?")
+      .get(attemptKey) as { count: number };
     if (attempts.count >= 8)
-      return fail("Too many attempts. Try again in 15 minutes.");
+      return fail(
+        "Too many attempts. Try again in 15 minutes.",
+        "/login",
+        origin,
+      );
     const digest = (value: string) =>
       createHash("sha256").update(value).digest();
     const correctEmail = timingSafeEqual(
@@ -111,17 +116,21 @@ export async function POST(
       digest(process.env.DEMO_AUTH_PASSWORD || "TalkBridgeDemo!2026"),
     );
     if (!correctEmail || !correctPassword) {
-      db().prepare("UPDATE attempts SET count=count+1 WHERE id=1").run();
-      return fail("Incorrect test email or password.");
+      db()
+        .prepare("UPDATE demo_attempts SET count=count+1 WHERE email=?")
+        .run(attemptKey);
+      return fail("Incorrect test email or password.", "/login", origin);
     }
-    db().prepare("UPDATE attempts SET count=0 WHERE id=1").run();
+    db()
+      .prepare("UPDATE demo_attempts SET count=0 WHERE email=?")
+      .run(attemptKey);
     await createSession({
       id: "demo:local",
       name: "Demo developer",
       email,
       provider: "demo",
     });
-    return NextResponse.redirect(new URL("/dashboard", appUrl()), 303);
+    return NextResponse.redirect(new URL("/dashboard", origin), 303);
   }
   const provider = action[1];
   if (!provider || !isProvider(provider) || action.length !== 2)
@@ -144,6 +153,7 @@ export async function POST(
     return fail(
       error instanceof Error ? error.message : "Could not start authorization.",
       user ? "/connections" : "/login",
+      origin,
     );
   }
 }
