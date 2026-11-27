@@ -85,9 +85,9 @@ async def github_webhook(request: Request) -> Any:
             pr_number=pr["number"],
             base_sha=pr["base"]["sha"],
             head_sha=pr["head"]["sha"],
-            pr_title=pr.get("title", ""),
-            pr_author=pr.get("user", {}).get("login", ""),
-            installation_id=payload.get("installation", {}).get("id"),
+            pr_title=pr.get("title") or "",
+            pr_author=(pr.get("user") or {}).get("login") or "",
+            installation_id=(payload.get("installation") or {}).get("id"),
         )
     except (KeyError, TypeError, AttributeError, ValidationError) as exc:
         raise HTTPException(422, "Invalid pull request payload") from exc

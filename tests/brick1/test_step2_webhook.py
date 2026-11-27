@@ -105,3 +105,14 @@ def test_malformed_action_is_rejected_without_crashing(action: object) -> None:
     body, headers = signed(data)
     assert client.post("/webhooks/github", content=body, headers=headers).status_code == 422
     worker.enqueue.assert_not_called()
+
+
+def test_null_optional_fields_accepted() -> None:
+    client, worker = client_and_worker()
+    data = payload()
+    data["installation"] = None
+    data["pull_request"]["title"] = None
+    data["pull_request"]["user"] = None
+    body, headers = signed(data)
+    assert client.post("/webhooks/github", content=body, headers=headers).status_code == 202
+    worker.enqueue.assert_called_once()
