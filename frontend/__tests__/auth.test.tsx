@@ -281,4 +281,53 @@ describe("authentication boundaries", () => {
       if (saved !== undefined) process.env.AUTH_URL = saved;
     }
   });
+  it("deduplicates concurrent OAuth token refreshes per user and provider", async () => {
+    vi.stubEnv("GITLAB_CLIENT_ID", "gl-id");
+    vi.stubEnv("GITLAB_CLIENT_SECRET", "gl-secret");
+    await auth.createSession({
+      id: "gl-user",
+      name: "GL",
+      email: "",
+      provider: "github",
+    });
+    store
+      .db()
+      .prepare("INSERT INTO connections VALUES (?,?,?,?,?)")
+      .run(
+        "gl-user",
+        "gitlab",
+        "gl-user",
+        store.encrypt(
+          JSON.stringify({
+            access_token: "old-access",
+            refresh_token: "old-refresh",
+          }),
+        ),
+        Date.now() - 1000,
+      );
+    let tokenCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/oauth/token")) {
+          tokenCalls++;
+          await new Promise((r) => setTimeout(r, 10));
+          return {
+            ok: true,
+            json: async () => ({
+              access_token: "fresh-access",
+              refresh_token: "fresh-refresh",
+              expires_in: 7200,
+            }),
+          };
+        }
+        return { ok: true, json: async () => [] };
+      }),
+    );
+    await Promise.all([
+      oauth.repositories("gl-user", "gitlab"),
+      oauth.repositories("gl-user", "gitlab"),
+    ]);
+    expect(tokenCalls).toBe(1);
+  });
 });

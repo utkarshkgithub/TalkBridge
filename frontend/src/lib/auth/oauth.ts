@@ -221,6 +221,53 @@ export function connections(userId: string) {
     .prepare("SELECT provider,account,expires FROM connections WHERE user_id=?")
     .all(userId) as Connection[];
 }
+type TokenSet = {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+};
+const pendingRefreshes = new Map<string, Promise<TokenSet>>();
+
+async function refreshConnectionToken(
+  userId: string,
+  provider: Provider,
+  token: TokenSet,
+) {
+  const key = `${userId}:${provider}`;
+  const existing = pendingRefreshes.get(key);
+  if (existing) return existing;
+  const task = (async () => {
+    try {
+      const fresh = await exchange(
+        provider,
+        new URLSearchParams({
+          grant_type: "refresh_token",
+          refresh_token: token.refresh_token!,
+        }),
+      );
+      const updated: TokenSet = {
+        ...fresh,
+        refresh_token: fresh.refresh_token || token.refresh_token,
+      };
+      db()
+        .prepare(
+          "UPDATE connections SET credentials=?,expires=? WHERE user_id=? AND provider=?",
+        )
+        .run(
+          encrypt(JSON.stringify(updated)),
+          updated.expires_in ? Date.now() + updated.expires_in * 1000 : null,
+          userId,
+          provider,
+        );
+      return updated;
+    } finally {
+      pendingRefreshes.delete(key);
+    }
+  })();
+  pendingRefreshes.set(key, task);
+  return task;
+}
+
 export async function repositories(userId: string, provider: Provider) {
   if (provider === "google") throw new Error("Choose a repository provider.");
   const connection = db()
@@ -230,37 +277,13 @@ export async function repositories(userId: string, provider: Provider) {
     .get(userId, provider) as
     { credentials: string; expires: number | null } | undefined;
   if (!connection) throw new Error("Connect your account first.");
-  let token = JSON.parse(decrypt(connection.credentials)) as {
-    access_token: string;
-    refresh_token?: string;
-    expires_in?: number;
-  };
+  let token = JSON.parse(decrypt(connection.credentials)) as TokenSet;
   if (connection.expires && connection.expires < Date.now() + 60000) {
     if (!token.refresh_token)
       throw new Error(
         "This connection expired. Disconnect and reconnect your account.",
       );
-    const fresh = await exchange(
-      provider,
-      new URLSearchParams({
-        grant_type: "refresh_token",
-        refresh_token: token.refresh_token,
-      }),
-    );
-    token = {
-      ...fresh,
-      refresh_token: fresh.refresh_token || token.refresh_token,
-    };
-    db()
-      .prepare(
-        "UPDATE connections SET credentials=?,expires=? WHERE user_id=? AND provider=?",
-      )
-      .run(
-        encrypt(JSON.stringify(token)),
-        token.expires_in ? Date.now() + token.expires_in * 1000 : null,
-        userId,
-        provider,
-      );
+    token = await refreshConnectionToken(userId, provider, token);
   }
   const url =
     provider === "github"
