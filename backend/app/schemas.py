@@ -1,5 +1,6 @@
 """Shared, validated contracts for the review pipeline."""
 
+from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal, Self
 
@@ -138,6 +139,7 @@ class ReviewTelemetry(Contract):
     stage_ms: dict[str, Annotated[float, Field(ge=0)]] = Field(default_factory=dict)
     prompt_tokens: int = Field(default=0, ge=0)
     cached_tokens: int = Field(default=0, ge=0)
+    cached_tokens_exposed: bool = False
     estimated_cost_usd: float = Field(default=0, ge=0)
     inference_valid_calls: int = Field(default=0, ge=0)
     inference_failed_calls: int = Field(default=0, ge=0)
@@ -216,3 +218,37 @@ class EvaluationPrediction(Contract):
     verifier_attempts: int = Field(default=0, ge=0)
     verifier_refutations: int = Field(default=0, ge=0)
     errors: list[InferenceError] = Field(default_factory=list)
+
+
+class StoredReview(Contract):
+    id: str
+    created_at: datetime
+    model_profile: Literal["base_8b", "replay"]
+    result: ReviewResult
+
+
+class ReviewList(Contract):
+    items: list[StoredReview]
+    total: int
+    limit: int
+    offset: int
+
+
+class ReplayFixture(Contract):
+    source: PRSource
+    result: ReviewResult
+    note: str = "Illustrative replay fixture, not measured live model output."
+
+
+class TelemetrySummary(Contract):
+    reviews: int
+    candidates: int
+    posted: int
+    suppression_rate: float
+    severity_counts: dict[str, int]
+    stage_ms: dict[str, float]
+    prompt_tokens: int
+    cached_tokens: int
+    cache_hit_ratio: float | None
+    estimated_cost_usd: float
+    model_profiles: list[str]

@@ -80,6 +80,7 @@ class ReviewOrchestrator:
         )
         telemetry.prompt_tokens = sum(u.prompt_tokens for u in usages)
         telemetry.cached_tokens = sum(u.cached_tokens or 0 for u in usages)
+        telemetry.cached_tokens_exposed = any(u.cached_tokens is not None for u in usages)
         result = ReviewResult(
             bundle=bundle,
             findings=findings,

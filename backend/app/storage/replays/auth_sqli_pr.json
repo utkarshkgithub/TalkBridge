@@ -1,0 +1,338 @@
+{
+  "source": {
+    "context": {
+      "delivery_id": "demo-auth_sqli_pr",
+      "action": "opened",
+      "repo_full_name": "acme/platform",
+      "pr_number": 42,
+      "base_sha": "demo-base",
+      "head_sha": "demo-head-auth_sqli_pr",
+      "pr_title": "Add passwordless session login",
+      "pr_author": "somil",
+      "installation_id": null
+    },
+    "diff": "diff --git a/auth/login.py b/auth/login.py\n--- /dev/null\n+++ b/auth/login.py\n@@ -0,0 +1,15 @@\n+import secrets\n+\n+def login(cursor, uid):\n+    cursor.execute(f\"SELECT * FROM users WHERE id = {uid}\")\n+    return cursor.fetchone()\n+\n+\n+def create_session(response):\n+    token = secrets.token_urlsafe(32)\n+    response.set_cookie(\"session\", token, httponly=True, secure=False)\n+    return response\n+\n+\n+def normalize_username(value):\n+    return value.strip() if value else \"\"\n",
+    "files": {
+      "auth/login.py": "import secrets\n\ndef login(cursor, uid):\n    cursor.execute(f\"SELECT * FROM users WHERE id = {uid}\")\n    return cursor.fetchone()\n\n\ndef create_session(response):\n    token = secrets.token_urlsafe(32)\n    response.set_cookie(\"session\", token, httponly=True, secure=False)\n    return response\n\n\ndef normalize_username(value):\n    return value.strip() if value else \"\"\n"
+    },
+    "review_rules": "Report actionable security and correctness bugs.",
+    "commit_subjects": []
+  },
+  "result": {
+    "bundle": {
+      "context": {
+        "delivery_id": "demo-auth_sqli_pr",
+        "action": "opened",
+        "repo_full_name": "acme/platform",
+        "pr_number": 42,
+        "base_sha": "demo-base",
+        "head_sha": "demo-head-auth_sqli_pr",
+        "pr_title": "Add passwordless session login",
+        "pr_author": "somil",
+        "installation_id": null
+      },
+      "depth_mode": "deep",
+      "hunks": [
+        {
+          "file": "auth/login.py",
+          "line_start": 1,
+          "line_end": 15,
+          "header": "@@ -0,0 +1,15 @@",
+          "lines": [
+            {
+              "kind": "addition",
+              "content": "import secrets",
+              "head_line": 1,
+              "base_line": null,
+              "github_position": 1
+            },
+            {
+              "kind": "addition",
+              "content": "",
+              "head_line": 2,
+              "base_line": null,
+              "github_position": 2
+            },
+            {
+              "kind": "addition",
+              "content": "def login(cursor, uid):",
+              "head_line": 3,
+              "base_line": null,
+              "github_position": 3
+            },
+            {
+              "kind": "addition",
+              "content": "    cursor.execute(f\"SELECT * FROM users WHERE id = {uid}\")",
+              "head_line": 4,
+              "base_line": null,
+              "github_position": 4
+            },
+            {
+              "kind": "addition",
+              "content": "    return cursor.fetchone()",
+              "head_line": 5,
+              "base_line": null,
+              "github_position": 5
+            },
+            {
+              "kind": "addition",
+              "content": "",
+              "head_line": 6,
+              "base_line": null,
+              "github_position": 6
+            },
+            {
+              "kind": "addition",
+              "content": "",
+              "head_line": 7,
+              "base_line": null,
+              "github_position": 7
+            },
+            {
+              "kind": "addition",
+              "content": "def create_session(response):",
+              "head_line": 8,
+              "base_line": null,
+              "github_position": 8
+            },
+            {
+              "kind": "addition",
+              "content": "    token = secrets.token_urlsafe(32)",
+              "head_line": 9,
+              "base_line": null,
+              "github_position": 9
+            },
+            {
+              "kind": "addition",
+              "content": "    response.set_cookie(\"session\", token, httponly=True, secure=False)",
+              "head_line": 10,
+              "base_line": null,
+              "github_position": 10
+            },
+            {
+              "kind": "addition",
+              "content": "    return response",
+              "head_line": 11,
+              "base_line": null,
+              "github_position": 11
+            },
+            {
+              "kind": "addition",
+              "content": "",
+              "head_line": 12,
+              "base_line": null,
+              "github_position": 12
+            },
+            {
+              "kind": "addition",
+              "content": "",
+              "head_line": 13,
+              "base_line": null,
+              "github_position": 13
+            },
+            {
+              "kind": "addition",
+              "content": "def normalize_username(value):",
+              "head_line": 14,
+              "base_line": null,
+              "github_position": 14
+            },
+            {
+              "kind": "addition",
+              "content": "    return value.strip() if value else \"\"",
+              "head_line": 15,
+              "base_line": null,
+              "github_position": 15
+            }
+          ],
+          "changed_head_lines": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ]
+        }
+      ],
+      "ast_chunks": [
+        {
+          "file": "auth/login.py",
+          "line_start": 1,
+          "line_end": 15,
+          "language": "python",
+          "symbol": "context_window",
+          "source": "import secrets\n\ndef login(cursor, uid):\n    cursor.execute(f\"SELECT * FROM users WHERE id = {uid}\")\n    return cursor.fetchone()\n\n\ndef create_session(response):\n    token = secrets.token_urlsafe(32)\n    response.set_cookie(\"session\", token, httponly=True, secure=False)\n    return response\n\n\ndef normalize_username(value):\n    return value.strip() if value else \"\"",
+          "caller_signatures": [],
+          "callee_signatures": [],
+          "fallback": true
+        },
+        {
+          "file": "auth/login.py",
+          "line_start": 3,
+          "line_end": 5,
+          "language": "python",
+          "symbol": "login",
+          "source": "def login(cursor, uid):\n    cursor.execute(f\"SELECT * FROM users WHERE id = {uid}\")\n    return cursor.fetchone()",
+          "caller_signatures": [],
+          "callee_signatures": [],
+          "fallback": false
+        },
+        {
+          "file": "auth/login.py",
+          "line_start": 8,
+          "line_end": 11,
+          "language": "python",
+          "symbol": "create_session",
+          "source": "def create_session(response):\n    token = secrets.token_urlsafe(32)\n    response.set_cookie(\"session\", token, httponly=True, secure=False)\n    return response",
+          "caller_signatures": [],
+          "callee_signatures": [],
+          "fallback": false
+        },
+        {
+          "file": "auth/login.py",
+          "line_start": 14,
+          "line_end": 15,
+          "language": "python",
+          "symbol": "normalize_username",
+          "source": "def normalize_username(value):\n    return value.strip() if value else \"\"",
+          "caller_signatures": [],
+          "callee_signatures": [],
+          "fallback": false
+        }
+      ],
+      "sast_hints": [
+        {
+          "file": "auth/login.py",
+          "line_start": 4,
+          "line_end": 4,
+          "rule_id": "Users.somilgupta.Desktop.work.TalkBridge.semgrep_rules.python-sql-fstring",
+          "cwe_id": "CWE-89",
+          "message": "SQL executed through an f-string may allow injection. Verify bindings.",
+          "severity": "ERROR"
+        }
+      ],
+      "review_rules": "Report actionable security and correctness bugs.",
+      "commit_subjects": [],
+      "original_chars": 474,
+      "cleaned_chars": 365,
+      "sast_status": "completed",
+      "warnings": []
+    },
+    "findings": [
+      {
+        "candidate": {
+          "file": "auth/login.py",
+          "line_start": 4,
+          "line_end": 4,
+          "finding_id": "A-1",
+          "source_agent": "A",
+          "category": "SQL query interpolates untrusted input",
+          "cwe_id": "CWE-89",
+          "severity": "important",
+          "confidence": 97,
+          "reasoning": "The route argument uid enters the SQL string before execution. Crafted input can change the query structure.",
+          "suggested_patch": "cursor.execute(\"SELECT * FROM users WHERE id = %s\", (uid,))",
+          "unit_test": null
+        },
+        "verification": {
+          "finding_id": "A-1",
+          "verdict": "confirmed",
+          "refutation_attempt": "Checked for parameter binding and input validation. Neither appears before cursor.execute.",
+          "calibrated_confidence": 92,
+          "severity": "important",
+          "pre_existing": false
+        },
+        "tier": "post_to_pr",
+        "posted_to_pr": false
+      },
+      {
+        "candidate": {
+          "file": "auth/login.py",
+          "line_start": 10,
+          "line_end": 10,
+          "finding_id": "A-2",
+          "source_agent": "A",
+          "category": "Session cookie can travel over HTTP",
+          "cwe_id": "CWE-614",
+          "severity": "nit",
+          "confidence": 70,
+          "reasoning": "The cookie explicitly disables the secure flag. Deployment HTTPS guarantees are outside this diff.",
+          "suggested_patch": "response.set_cookie(\"session\", token, httponly=True, secure=True)",
+          "unit_test": null
+        },
+        "verification": {
+          "finding_id": "A-2",
+          "verdict": "uncertain",
+          "refutation_attempt": "A TLS-only reverse proxy could mitigate exposure. Deployment context is missing.",
+          "calibrated_confidence": 65,
+          "severity": "nit",
+          "pre_existing": false
+        },
+        "tier": "dashboard_only",
+        "posted_to_pr": false
+      },
+      {
+        "candidate": {
+          "file": "auth/login.py",
+          "line_start": 15,
+          "line_end": 15,
+          "finding_id": "B-3",
+          "source_agent": "B",
+          "category": "Possible null username dereference",
+          "cwe_id": "CWE-476",
+          "severity": "nit",
+          "confidence": 40,
+          "reasoning": "The value may be None when the profile is incomplete.",
+          "suggested_patch": null,
+          "unit_test": null
+        },
+        "verification": {
+          "finding_id": "B-3",
+          "verdict": "refuted",
+          "refutation_attempt": "The conditional checks value before calling strip, so None returns an empty string.",
+          "calibrated_confidence": 35,
+          "severity": "nit",
+          "pre_existing": false
+        },
+        "tier": "discarded",
+        "posted_to_pr": false
+      }
+    ],
+    "telemetry": {
+      "stage_ms": {
+        "stage0": 145.0,
+        "stage1": 1210.0,
+        "stage2": 780.0,
+        "stage3": 4.0,
+        "stage4": 36.0
+      },
+      "prompt_tokens": 6400,
+      "cached_tokens": 3200,
+      "estimated_cost_usd": 0.0,
+      "inference_valid_calls": 0,
+      "inference_failed_calls": 0,
+      "verifier_attempts": 0,
+      "verifier_refutations": 0,
+      "cached_tokens_exposed": true
+    },
+    "errors": [],
+    "publication": {
+      "dry_run": true,
+      "inline_comments": [],
+      "summary": "Illustrative replay; nothing was posted to GitHub.",
+      "check": {},
+      "warnings": []
+    }
+  },
+  "note": "Illustrative replay fixture, not measured live model output."
+}

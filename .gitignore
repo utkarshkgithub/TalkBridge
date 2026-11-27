@@ -17,3 +17,8 @@ frontend/out/
 .env*.local
 npm-debug.log*
 *.tsbuildinfo
+
+# Browser test artifacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/.sites-runtime/

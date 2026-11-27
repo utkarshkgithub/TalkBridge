@@ -23,11 +23,13 @@ class ReviewWorker:
         *,
         queue_size: int = 100,
         count: int = 1,
+        on_result: Callable[[ReviewBundle | ReviewResult], Awaitable[None]] | None = None,
     ) -> None:
         self.fetcher = fetcher
         self.processor = processor
         self.queue: asyncio.Queue[PRContext] = asyncio.Queue(maxsize=queue_size)
         self.count = count
+        self.on_result = on_result
         self.tasks: list[asyncio.Task[None]] = []
         self.results: OrderedDict[str, ReviewBundle | ReviewResult] = OrderedDict()
         self.failures: OrderedDict[str, str] = OrderedDict()
@@ -50,6 +52,8 @@ class ReviewWorker:
             try:
                 source = await self.fetcher.fetch(context)
                 bundle = await self.processor(source)
+                if self.on_result is not None:
+                    await self.on_result(bundle)
                 self.results[context.delivery_id] = bundle
                 if len(self.results) > 100:
                     self.results.popitem(last=False)
@@ -57,7 +61,7 @@ class ReviewWorker:
                 # Do not log remote response bodies or authentication material.
                 logger.error("Review failed for delivery %s", context.delivery_id)
                 self.failures[context.delivery_id] = (
-                    "Review failed; inspect GitHub access and worker configuration"
+                    "Review failed; inspect GitHub, inference, and storage configuration"
                 )
                 if len(self.failures) > 100:
                     self.failures.popitem(last=False)

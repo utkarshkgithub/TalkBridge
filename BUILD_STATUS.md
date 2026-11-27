@@ -104,7 +104,7 @@ Validated on November 27, 2026:
 
 Brick 2 is not complete. The user explicitly approved committing and pushing the implementation
 checkpoint after gap review. This checkpoint does not certify the live exit gates. No baseline
-result files were fabricated. No Brick 3 work has started.
+result files were fabricated. Brick 3 was subsequently requested; see its checkpoint below.
 
 This environment is Apple ARM. No vLLM endpoint, model credentials, or free GPU access was
 provided. `http://localhost:8001/v1/models` has no running server. The optional NVIDIA service
@@ -139,3 +139,83 @@ that portion of the explicitly allowed sandboxed dry-run gate.
 - Fresh checks: 119 tests passed, 3 live tests skipped; strict mypy, Ruff, backend wheel build,
   locked dependencies, frontend type/lint, Docker build, Compose validation and database readiness
   passed. The existing test-client dependency warning remains.
+
+## Brick 3: dashboard, persistence and offline replay checkpoint
+
+The user explicitly requested Brick 3, shadcn components and Linear inspiration after being told
+that Brick 2's live GPU gates were still pending. This authorizes the current build-order
+exception. The held-out split, metric formulas and missing real baseline remain unchanged.
+No Brick 4 training or adapter routing is implemented.
+
+Implemented:
+
+- A small async psycopg connection pool for Docker PostgreSQL. Canonical review results and
+  normalized diff/finding child records are saved together in one transaction. All confidence
+  tiers, refutation notes, telemetry and publication state survive application restarts.
+- A worker completion hook stores actual review results. The bounded asyncio job queue and
+  webhook delivery cache remain ephemeral, with no Celery, Redis or durable retry mechanism.
+- Paginated review and detail APIs, telemetry summary, and three packaged illustrative replay
+  records. Replay requires local PostgreSQL but no network, GitHub credentials, model server,
+  scanner subprocess, or GPU. The SQL example includes confidence scores 92, 65 and 35.
+- Explicit live sample execution, bounded to one request, uses actual inference and persists
+  Base 8B results. It is disabled in replay mode and never publishes sample PRs to GitHub.
+- The Next.js frontend uses real shadcn-generated Base UI components, a dark Linear-inspired
+  workspace, responsive navigation, review search/filter/pagination, health heuristics,
+  severity distribution, stage timing, cache and cost panels.
+- Review detail contains unified diffs with line-anchored finding cards, verifier refutation,
+  suggested patches, copy controls, file navigation, suppressed metadata, and a keyboard slider.
+  The confidence threshold changes entirely in the browser with no API or inference calls.
+- A same-origin, allowlisted Next.js backend proxy keeps server configuration out of browser
+  credentials. Fonts use the system stack without runtime internet access.
+- Replay labels distinguish illustrative findings/telemetry from actual inference. Eligibility
+  for a PR comment is separate from actual posted state. Missing cache counters display as
+  unavailable rather than a fabricated zero-percent measured hit rate.
+
+### Brick 3 verification
+
+- Backend regression suite: 124 passed, 3 live-inference tests skipped, existing test-client
+  dependency deprecation warning remains.
+- Real PostgreSQL integration covers normalized artifacts, repeated replay without duplication,
+  process restart persistence, worker persistence, disabled storage, invalid IDs/pagination,
+  offline transport isolation and replay completion under 500 ms.
+- Mocked live sample API coverage proves the live endpoint calls inference rather than returning
+  a replay record. This is transport coverage, not actual Base 8B validation.
+- Strict mypy passes across 36 backend/evaluation files. Ruff lint and format checks pass.
+- Locked backend install and wheel build pass; all three replay JSON files are packaged.
+- Eight frontend unit tests pass, covering loading, errors/retry, health calculations, review pagination and
+  exact local confidence filtering. Both desktop and mobile Playwright tests pass, covering offline replay,
+  keyboard thresholds, patch display, responsive navigation, no horizontal page overflow,
+  zero slider API calls and no client runtime errors.
+- TypeScript and ESLint pass. Next.js production build passes in Docker. A clean npm lockfile
+  installation is verified with the local Sites workflow helper.
+- Native browser inspection verified the dashboard styling. Playwright screenshots also verified
+  desktop/mobile review layout. Browser artifacts are ignored in `frontend/test-results/`.
+
+### Remaining gates and deliberate limits
+
+The offline dashboard/replay path is ready for review. Brick 3's full exit gate requires live
+vLLM validation as well as offline replay; that live half is still pending together with Brick
+2's true baseline. No frozen baseline or live cache speedup is claimed. Cost panels show local
+API estimates excluding infrastructure; a frontier API comparison has not been configured.
+
+The dashboard is a local college-project surface without account authentication. Schema setup
+creates the initial PostgreSQL tables rather than introducing a migration framework. Telemetry
+aggregation reads stored reviews directly and is intended for this small deployment. Health
+scores are explicit heuristics, not vulnerability-detection accuracy measurements.
+
+The user explicitly approved committing and pushing this Brick 3 checkpoint after gap review.
+This approval does not certify the pending live GPU exit gates.
+Run instructions and exact frontend/backend checks are in README.md.
+
+### Brick 3 pre-commit gap review
+
+- Live sample reviews have a bounded whole-request deadline below the frontend proxy timeout.
+  Timeout coverage verifies HTTP 504, no incomplete database record and a released review slot.
+- Publishable findings are labeled as ready for review rather than automatically called important.
+  Nits and pre-existing findings retain their actual severity in detail views.
+- Incomplete inference/context processing marks a review partial, keeps it out of the clean filter,
+  and excludes it from health scores and health trends. Publication warnings are visible in detail.
+- Frontend API errors normalize non-text validation details to a readable message.
+- Final validation includes 124 backend tests, eight frontend unit tests, desktop/mobile replay,
+  strict mypy, Ruff/Prettier, TypeScript, ESLint, backend wheel and Next.js Docker production build.
+  Three live inference tests remain skipped. The held-out split and evaluator are unchanged.

@@ -9,7 +9,7 @@ This document defines the end-to-end technical architecture of **TalkBridge** ac
 The active college-project profile uses a bounded in-process asyncio queue instead of Redis/Celery,
 Python in `backend/.venv`, the existing Next.js frontend, and PostgreSQL in Docker.
 No paid services are required. SQLite is not part of this profile. Review persistence remains
-scheduled for Brick 3. The local queue and delivery cache are intentionally ephemeral and require
+implemented in Brick 3. The local queue and delivery cache are intentionally ephemeral and require
 one API process. See [BUILD_STATUS.md](./BUILD_STATUS.md) for completed work.
 
 Brick 2 uses Qwen3-8B-AWQ without project fine-tuning. Modern vLLM uses
@@ -17,6 +17,11 @@ Brick 2 uses Qwen3-8B-AWQ without project fine-tuning. Modern vLLM uses
 The legacy transport remains selectable and tested with identical schemas. See
 [evaluation/README.md](./evaluation/README.md) for the versioned inference setup and live gates.
 Prefix byte identity permits cache reuse; actual TTFT improvements require live measurement.
+
+On November 27, 2026, the user explicitly requested Brick 3 with shadcn and Linear inspiration
+after the preceding checkpoint was reported with pending live GPU gates. This
+request overrides the build-order gate for this implementation checkpoint only. No live
+baseline, model improvement or full live exit gate is claimed by the dashboard work.
 
 ## 1. Architectural Principles & Hard Invariants
 

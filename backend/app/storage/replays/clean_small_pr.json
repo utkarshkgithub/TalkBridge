@@ -1,0 +1,128 @@
+{
+  "source": {
+    "context": {
+      "delivery_id": "demo-clean_small_pr",
+      "action": "opened",
+      "repo_full_name": "acme/platform",
+      "pr_number": 40,
+      "base_sha": "demo-base",
+      "head_sha": "demo-head-clean_small_pr",
+      "pr_title": "Handle empty names in profile cards",
+      "pr_author": "somil",
+      "installation_id": null
+    },
+    "diff": "diff --git a/users/profile.py b/users/profile.py\n--- /dev/null\n+++ b/users/profile.py\n@@ -0,0 +1,4 @@\n+def display_name(user):\n+    first = (user.first_name or \"\").strip()\n+    last = (user.last_name or \"\").strip()\n+    return \" \".join(part for part in (first, last) if part) or \"Anonymous\"\n",
+    "files": {
+      "users/profile.py": "def display_name(user):\n    first = (user.first_name or \"\").strip()\n    last = (user.last_name or \"\").strip()\n    return \" \".join(part for part in (first, last) if part) or \"Anonymous\"\n"
+    },
+    "review_rules": "Report actionable security and correctness bugs.",
+    "commit_subjects": []
+  },
+  "result": {
+    "bundle": {
+      "context": {
+        "delivery_id": "demo-clean_small_pr",
+        "action": "opened",
+        "repo_full_name": "acme/platform",
+        "pr_number": 40,
+        "base_sha": "demo-base",
+        "head_sha": "demo-head-clean_small_pr",
+        "pr_title": "Handle empty names in profile cards",
+        "pr_author": "somil",
+        "installation_id": null
+      },
+      "depth_mode": "quick",
+      "hunks": [
+        {
+          "file": "users/profile.py",
+          "line_start": 1,
+          "line_end": 4,
+          "header": "@@ -0,0 +1,4 @@",
+          "lines": [
+            {
+              "kind": "addition",
+              "content": "def display_name(user):",
+              "head_line": 1,
+              "base_line": null,
+              "github_position": 1
+            },
+            {
+              "kind": "addition",
+              "content": "    first = (user.first_name or \"\").strip()",
+              "head_line": 2,
+              "base_line": null,
+              "github_position": 2
+            },
+            {
+              "kind": "addition",
+              "content": "    last = (user.last_name or \"\").strip()",
+              "head_line": 3,
+              "base_line": null,
+              "github_position": 3
+            },
+            {
+              "kind": "addition",
+              "content": "    return \" \".join(part for part in (first, last) if part) or \"Anonymous\"",
+              "head_line": 4,
+              "base_line": null,
+              "github_position": 4
+            }
+          ],
+          "changed_head_lines": [
+            1,
+            2,
+            3,
+            4
+          ]
+        }
+      ],
+      "ast_chunks": [
+        {
+          "file": "users/profile.py",
+          "line_start": 1,
+          "line_end": 4,
+          "language": "python",
+          "symbol": "display_name",
+          "source": "def display_name(user):\n    first = (user.first_name or \"\").strip()\n    last = (user.last_name or \"\").strip()\n    return \" \".join(part for part in (first, last) if part) or \"Anonymous\"",
+          "caller_signatures": [],
+          "callee_signatures": [],
+          "fallback": false
+        }
+      ],
+      "sast_hints": [],
+      "review_rules": "Report actionable security and correctness bugs.",
+      "commit_subjects": [],
+      "original_chars": 291,
+      "cleaned_chars": 185,
+      "sast_status": "completed",
+      "warnings": []
+    },
+    "findings": [],
+    "telemetry": {
+      "stage_ms": {
+        "stage0": 145.0,
+        "stage1": 1210.0,
+        "stage2": 780.0,
+        "stage3": 4.0,
+        "stage4": 36.0
+      },
+      "prompt_tokens": 6400,
+      "cached_tokens": 3200,
+      "estimated_cost_usd": 0.0,
+      "inference_valid_calls": 0,
+      "inference_failed_calls": 0,
+      "verifier_attempts": 0,
+      "verifier_refutations": 0,
+      "cached_tokens_exposed": true
+    },
+    "errors": [],
+    "publication": {
+      "dry_run": true,
+      "inline_comments": [],
+      "summary": "Illustrative replay; nothing was posted to GitHub.",
+      "check": {},
+      "warnings": []
+    }
+  },
+  "note": "Illustrative replay fixture, not measured live model output."
+}

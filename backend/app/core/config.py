@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     demo_replay_mode: bool = False
     sandbox_test_enabled: bool = False
     review_enabled: bool = False
+    storage_enabled: bool = False
+    live_review_timeout_seconds: float = Field(default=150, gt=0, le=150)
     github_publish_enabled: bool = False
     vllm_base_url: str = "http://localhost:8001/v1"
     vllm_api_key: SecretStr = SecretStr("")

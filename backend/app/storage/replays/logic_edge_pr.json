@@ -1,0 +1,213 @@
+{
+  "source": {
+    "context": {
+      "delivery_id": "demo-logic_edge_pr",
+      "action": "opened",
+      "repo_full_name": "acme/platform",
+      "pr_number": 41,
+      "base_sha": "demo-base",
+      "head_sha": "demo-head-logic_edge_pr",
+      "pr_title": "Support promotional checkout discounts",
+      "pr_author": "somil",
+      "installation_id": null
+    },
+    "diff": "diff --git a/billing/discount.py b/billing/discount.py\n--- /dev/null\n+++ b/billing/discount.py\n@@ -0,0 +1,8 @@\n+def apply_discount(total, percent):\n+    discount = total * percent / 100\n+    return total - discount\n+\n+\n+def checkout(cart, request):\n+    total = sum(item.price for item in cart)\n+    return apply_discount(total, float(request.args[\"discount\"]))\n",
+    "files": {
+      "billing/discount.py": "def apply_discount(total, percent):\n    discount = total * percent / 100\n    return total - discount\n\n\ndef checkout(cart, request):\n    total = sum(item.price for item in cart)\n    return apply_discount(total, float(request.args[\"discount\"]))\n"
+    },
+    "review_rules": "Report actionable security and correctness bugs.",
+    "commit_subjects": []
+  },
+  "result": {
+    "bundle": {
+      "context": {
+        "delivery_id": "demo-logic_edge_pr",
+        "action": "opened",
+        "repo_full_name": "acme/platform",
+        "pr_number": 41,
+        "base_sha": "demo-base",
+        "head_sha": "demo-head-logic_edge_pr",
+        "pr_title": "Support promotional checkout discounts",
+        "pr_author": "somil",
+        "installation_id": null
+      },
+      "depth_mode": "quick",
+      "hunks": [
+        {
+          "file": "billing/discount.py",
+          "line_start": 1,
+          "line_end": 8,
+          "header": "@@ -0,0 +1,8 @@",
+          "lines": [
+            {
+              "kind": "addition",
+              "content": "def apply_discount(total, percent):",
+              "head_line": 1,
+              "base_line": null,
+              "github_position": 1
+            },
+            {
+              "kind": "addition",
+              "content": "    discount = total * percent / 100",
+              "head_line": 2,
+              "base_line": null,
+              "github_position": 2
+            },
+            {
+              "kind": "addition",
+              "content": "    return total - discount",
+              "head_line": 3,
+              "base_line": null,
+              "github_position": 3
+            },
+            {
+              "kind": "addition",
+              "content": "",
+              "head_line": 4,
+              "base_line": null,
+              "github_position": 4
+            },
+            {
+              "kind": "addition",
+              "content": "",
+              "head_line": 5,
+              "base_line": null,
+              "github_position": 5
+            },
+            {
+              "kind": "addition",
+              "content": "def checkout(cart, request):",
+              "head_line": 6,
+              "base_line": null,
+              "github_position": 6
+            },
+            {
+              "kind": "addition",
+              "content": "    total = sum(item.price for item in cart)",
+              "head_line": 7,
+              "base_line": null,
+              "github_position": 7
+            },
+            {
+              "kind": "addition",
+              "content": "    return apply_discount(total, float(request.args[\"discount\"]))",
+              "head_line": 8,
+              "base_line": null,
+              "github_position": 8
+            }
+          ],
+          "changed_head_lines": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ]
+        }
+      ],
+      "ast_chunks": [
+        {
+          "file": "billing/discount.py",
+          "line_start": 1,
+          "line_end": 3,
+          "language": "python",
+          "symbol": "apply_discount",
+          "source": "def apply_discount(total, percent):\n    discount = total * percent / 100\n    return total - discount",
+          "caller_signatures": [
+            "billing/discount.py:6 def checkout(cart, request):"
+          ],
+          "callee_signatures": [],
+          "fallback": false
+        },
+        {
+          "file": "billing/discount.py",
+          "line_start": 1,
+          "line_end": 8,
+          "language": "python",
+          "symbol": "context_window",
+          "source": "def apply_discount(total, percent):\n    discount = total * percent / 100\n    return total - discount\n\n\ndef checkout(cart, request):\n    total = sum(item.price for item in cart)\n    return apply_discount(total, float(request.args[\"discount\"]))",
+          "caller_signatures": [],
+          "callee_signatures": [],
+          "fallback": true
+        },
+        {
+          "file": "billing/discount.py",
+          "line_start": 6,
+          "line_end": 8,
+          "language": "python",
+          "symbol": "checkout",
+          "source": "def checkout(cart, request):\n    total = sum(item.price for item in cart)\n    return apply_discount(total, float(request.args[\"discount\"]))",
+          "caller_signatures": [],
+          "callee_signatures": [
+            "billing/discount.py:1 def apply_discount(total, percent):"
+          ],
+          "fallback": false
+        }
+      ],
+      "sast_hints": [],
+      "review_rules": "Report actionable security and correctness bugs.",
+      "commit_subjects": [],
+      "original_chars": 362,
+      "cleaned_chars": 243,
+      "sast_status": "completed",
+      "warnings": []
+    },
+    "findings": [
+      {
+        "candidate": {
+          "file": "billing/discount.py",
+          "line_start": 8,
+          "line_end": 8,
+          "finding_id": "B-1",
+          "source_agent": "B",
+          "category": "Discount is accepted without bounds",
+          "cwe_id": "CWE-20",
+          "severity": "important",
+          "confidence": 93,
+          "reasoning": "A client-controlled percentage above 100 produces a negative order total.",
+          "suggested_patch": "percent = min(100, max(0, float(request.args[\"discount\"])))",
+          "unit_test": null
+        },
+        "verification": {
+          "finding_id": "B-1",
+          "verdict": "confirmed",
+          "refutation_attempt": "No validation constrains the discount percentage before apply_discount.",
+          "calibrated_confidence": 88,
+          "severity": "important",
+          "pre_existing": false
+        },
+        "tier": "post_to_pr",
+        "posted_to_pr": false
+      }
+    ],
+    "telemetry": {
+      "stage_ms": {
+        "stage0": 145.0,
+        "stage1": 1210.0,
+        "stage2": 780.0,
+        "stage3": 4.0,
+        "stage4": 36.0
+      },
+      "prompt_tokens": 6400,
+      "cached_tokens": 3200,
+      "estimated_cost_usd": 0.0,
+      "inference_valid_calls": 0,
+      "inference_failed_calls": 0,
+      "verifier_attempts": 0,
+      "verifier_refutations": 0,
+      "cached_tokens_exposed": true
+    },
+    "errors": [],
+    "publication": {
+      "dry_run": true,
+      "inline_comments": [],
+      "summary": "Illustrative replay; nothing was posted to GitHub.",
+      "check": {},
+      "warnings": []
+    }
+  },
+  "note": "Illustrative replay fixture, not measured live model output."
+}

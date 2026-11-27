@@ -10,17 +10,18 @@ TalkBridge is a developer platform that plugs straight into GitHub Pull Requests
 ---
 
 
-## Current implementation: Brick 2 in progress
+## Current implementation: Brick 3 checkpoint
 
 Brick 1 implements signed GitHub webhook intake, bounded asyncio workers, diff cleaning,
 Tree-sitter context extraction, local Semgrep hints, and adaptive review depth. Brick 2 adds
 the async vLLM client, isolated finders, adversarial verification, ranking and GitHub publication.
 Its offline flow and held-out dataset are implemented; live 8B baseline gates remain pending.
-Bricks 3 and 4 remain planned. The frontend stays the existing Next.js scaffold until Brick 3.
+Brick 3 now adds PostgreSQL persistence, replay APIs and a shadcn dashboard inspired by Linear.
+The user authorized this work while Brick 2 live validation remains deferred. Brick 4 is planned.
 
 This college-project profile uses free local tools, a backend virtual environment, and Docker
 PostgreSQL. It requires no paid API, Redis, or Celery. PostgreSQL is provisioned now; review
-persistence is implemented in Brick 3. Read [BUILD_STATUS.md](./BUILD_STATUS.md) for limits and gates.
+persistence is available with `STORAGE_ENABLED=true`. Read [BUILD_STATUS.md](./BUILD_STATUS.md) for limits and gates.
 
 ### Run locally
 
@@ -38,7 +39,8 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Use exactly one Uvicorn process. Its bounded worker queue and delivery cache are in memory.
-Restarting the backend clears pending jobs, delivery IDs, and the most recent 100 bundles.
+Restarting the backend clears pending jobs, delivery IDs, and in-memory results.
+Completed reviews remain in PostgreSQL when storage is enabled.
 Do not use this development worker for deployments that require durable jobs.
 
 The GitHub App needs repository Contents and Pull requests read access for Brick 1.
@@ -76,15 +78,67 @@ Publication defaults to a dry run. To publish live reviews, set `GITHUB_PUBLISH_
 and grant the GitHub App Contents read, Pull requests write, and Checks write permissions.
 Reinstall or approve the App permission update on the target repository. Reviews post findings
 at confidence 80 or above, one review summary, and a completed neutral check. Invalid inline
-anchors fall back to the summary. Lower scores remain in the in-memory result, with persistence
-scheduled for Brick 3. Inference failures, incomplete SAST scans, missing context, and candidate-budget errors are
+anchors fall back to the summary. Lower scores remain in memory and persist in PostgreSQL when storage is enabled. Inference failures, incomplete SAST scans, missing context, and candidate-budget errors are
 visible as partial reviews. `GET /health` remains process health only.
 
-Worker queue and results remain ephemeral. GitHub publication checks the current head, serializes
+The worker queue and in-memory cache remain ephemeral; completed reviews can persist in PostgreSQL.
+GitHub publication checks the current head, serializes
 writes within this process, and deduplicates its own bot reviews by head SHA. A retry can repair
 a missing neutral check; checks are scoped to the authenticated App. Multiple API instances and automatic durable retries are not supported.
 `SANDBOX_TEST_ENABLED` exposes a Deep-mode hook for an explicitly provided isolated runner;
-no generated test code executes by default. Replay and LoRA routing belong to later bricks.
+no generated test code executes by default. Replay is available in Brick 3. LoRA routing remains Brick 4 work.
+
+### Brick 3 dashboard and offline demo
+
+The default `.env.example` enables PostgreSQL storage and illustrative replay mode. Start the
+backend using the local commands above, then start the frontend in a second terminal:
+
+```bash
+cd frontend
+npm ci
+cp .env.example .env.local
+npm run dev -- --hostname 127.0.0.1 --port 3000
+```
+
+Open `http://127.0.0.1:3000`. The dashboard has Overview, All reviews and Insights pages,
+search/filter controls, severity and latency charts, and a paginated review list. A review
+shows unified source diffs, line-anchored findings, verifier reasoning, patch copying and a
+keyboard-accessible confidence slider. Changing the slider is entirely local and never
+republishes findings. Suppressed/refuted metadata remains inspectable separately.
+
+`DEMO_REPLAY_MODE=true` seeds three PostgreSQL demo reviews. Replay loads packaged records
+without GitHub, vLLM, Semgrep subprocesses or internet access. Demo findings, latency and cache
+counts are explicitly illustrative, and replay never posts to GitHub. Actual posted state is
+separate from threshold eligibility. PostgreSQL must be running locally for persistence.
+
+The frontend uses a same-origin `/api/backend/*` proxy with an allowlist. Its server-only
+`BACKEND_URL` defaults to `http://127.0.0.1:8000`; no model or GitHub credentials enter the browser.
+APIs are a local-development surface without account authentication. Keep the documented
+loopback bindings for the college demonstration.
+
+To run the sample scenarios through actual inference, set `REVIEW_ENABLED=true` and
+`DEMO_REPLAY_MODE=false` with a working vLLM endpoint, then use **Run live**. This review path
+persists Base 8B results but never publishes the synthetic sample to GitHub. Webhook reviews
+use the existing publisher when explicitly enabled. The request path admits one live sample
+review at a time. `LIVE_REVIEW_TIMEOUT_SECONDS` defaults to 150 seconds and cannot exceed
+150, so the backend returns an explicit timeout before the frontend proxy expires. A timed-out
+request releases its slot and does not persist an incomplete result. LoRA adapters remain Brick 4 work.
+
+API endpoints:
+
+- `GET /api/reviews?limit=50&offset=0` and `GET /api/reviews/{id}`
+- `GET /api/telemetry/summary`
+- `POST /api/demo/replay/{auth_sqli_pr|logic_edge_pr|clean_small_pr}`
+- `POST /api/reviews/run/{auth_sqli_pr|logic_edge_pr|clean_small_pr}`
+
+Data is stored transactionally in `reviews`, `diff_hunks` and `findings`, including all confidence
+tiers and publication state. Storage initialization creates missing tables; this project does
+not introduce a general migration framework or a durable task queue.
+
+Frontend components come from [shadcn/ui](https://ui.shadcn.com/) with Base UI primitives.
+The dark workspace takes layout and visual inspiration from [Linear](https://linear.app/).
+Fonts use the system stack, with no runtime font download. Health scores are labeled heuristics.
+Costs exclude infrastructure, and no unmeasured frontier API comparison or cache speedup is shown.
 
 ### Checks before each phase commit
 
@@ -100,6 +154,7 @@ cd ../frontend
 npm ci
 npm run typecheck
 npm run lint
+npm test
 npm run build
 ```
 
@@ -240,3 +295,22 @@ GitHub PR Webhook
 2. **Base 8B vs. Fine-Tuned 8B vs. Frontier Teacher:** Bug-detection F1, CWE classification accuracy, and JSON schema validity on the held-out `150–200` diff split.
 3. **Confidence Threshold Curve (`40 → 60 → 80 → 90`):** Precision vs. Recall curve empirically justifying `80` as the PR-posting threshold.
 4. **Latency & Cost Benchmark:** Prefix-cached 8B pipeline (seconds, fractions of a cent per PR) vs. frontier API pricing (`$15–$25/PR` for deep multi-agent reviews).
+
+### Browser and PostgreSQL checks
+
+The full backend suite includes real PostgreSQL integration tests. Tests create unique isolated
+schemas and remove them afterward. Override `TEST_DATABASE_URL` to use a separate test server.
+Start the local API and frontend in replay mode before browser tests:
+
+```bash
+cd frontend
+npm run test:e2e
+```
+
+Playwright defaults to the installed Chrome channel. On another machine, install a supported
+browser and set `PLAYWRIGHT_CHANNEL` accordingly. Browser tests cover desktop and mobile,
+block external requests, and assert zero API calls while changing confidence. Test screenshots
+and traces are ignored under `frontend/test-results/`.
+
+Live GPU-dependent gates remain pending. Passing offline replay does not certify the real
+model baseline or live vLLM cache performance. See `BUILD_STATUS.md` for the exact checkpoint.
