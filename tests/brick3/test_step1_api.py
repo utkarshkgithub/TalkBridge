@@ -162,3 +162,33 @@ def test_live_deadline_releases_slot_and_does_not_save_incomplete_results(databa
         with patch("httpx.AsyncClient.send", new=fast_send):
             assert client.post("/api/reviews/run/auth_sqli_pr").status_code == 200
         assert client.get("/api/reviews").json()["total"] == 1
+
+
+def test_telemetry_summary_uses_projected_rows_without_full_bundle():
+    fixture = load_fixture("auth_sqli_pr").result
+    store = AsyncMock()
+    store.summary_rows.return_value = [
+        {
+            "model_profile": "replay",
+            "telemetry": fixture.telemetry.model_dump(mode="json"),
+            "findings": [
+                {
+                    "tier": f.tier,
+                    "posted_to_pr": f.posted_to_pr,
+                    "severity": f.verification.severity,
+                    "pre_existing": f.verification.pre_existing,
+                }
+                for f in fixture.findings
+            ],
+        }
+    ]
+    with TestClient(create_app(Settings(_env_file=None))) as client:
+        client.app.state.store = store
+        summary = client.get("/api/telemetry/summary")
+        assert summary.status_code == 200
+        data = summary.json()
+        assert data["reviews"] == 1
+        assert data["candidates"] == 3
+        assert data["severity_counts"] == {"Important": 1, "Nit": 1, "Pre-existing": 0}
+        assert data["cache_hit_ratio"] == 0.5
+        store.all.assert_not_called()

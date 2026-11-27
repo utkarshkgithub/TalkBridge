@@ -102,3 +102,17 @@ class ReviewStore:
         async with self.pool.connection() as connection:
             cursor = await connection.execute("SELECT * FROM reviews ORDER BY created_at, id")
             return [StoredReview.model_validate(row) for row in await cursor.fetchall()]
+
+    async def summary_rows(self) -> List[dict[str, Any]]:
+        async with self.pool.connection() as connection:
+            cursor = await connection.execute(
+                "SELECT model_profile, result->'telemetry' AS telemetry, "
+                "(SELECT coalesce(jsonb_agg(jsonb_build_object("
+                "'tier', f->'tier', "
+                "'posted_to_pr', f->'posted_to_pr', "
+                "'severity', f->'verification'->'severity', "
+                "'pre_existing', f->'verification'->'pre_existing'"
+                ")), '[]'::jsonb) FROM jsonb_array_elements(result->'findings') AS f) AS findings "
+                "FROM reviews"
+            )
+            return list(await cursor.fetchall())

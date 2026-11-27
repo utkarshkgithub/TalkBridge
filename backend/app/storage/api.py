@@ -6,11 +6,11 @@ from uuid import uuid4
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from app.agents.dedupe_rank import severity_label
+from app.agents.dedupe_rank import label_for
 from app.agents.orchestrator import ReviewOrchestrator
 from app.llm.vllm_client import VLLMClient
 from app.pipeline.stage0 import Stage0
-from app.schemas import ReviewList, StoredReview, TelemetrySummary
+from app.schemas import ReviewList, ReviewTelemetry, StoredReview, TelemetrySummary
 from app.storage.db import ReviewStore
 from app.storage.replay import load_fixture
 
@@ -84,28 +84,33 @@ async def run_live_review(identity: str, request: Request) -> StoredReview:
 
 @router.get("/telemetry/summary", response_model=TelemetrySummary)
 async def telemetry_summary(request: Request) -> TelemetrySummary:
-    reviews = await store_for(request).all()
-    findings = [f for review in reviews for f in review.result.findings]
+    rows = await store_for(request).summary_rows()
+    findings = [f for row in rows for f in (row.get("findings") or ())]
+    telemetries = [ReviewTelemetry.model_validate(row.get("telemetry") or {}) for row in rows]
     candidates = len(findings)
-    posted = sum(f.posted_to_pr for f in findings)
+    posted = sum(bool(f.get("posted_to_pr")) for f in findings)
     severities = {
-        name: sum(severity_label(f).endswith(name) for f in findings if f.tier != "discarded")
+        name: sum(
+            label_for(bool(f.get("pre_existing")), str(f.get("severity", "nit"))).endswith(name)
+            for f in findings
+            if f.get("tier") != "discarded"
+        )
         for name in ("Important", "Nit", "Pre-existing")
     }
     stages = {
-        f"stage{i}": sum(r.result.telemetry.stage_ms.get(f"stage{i}", 0) for r in reviews)
-        / max(len(reviews), 1)
+        f"stage{i}": sum(t.stage_ms.get(f"stage{i}", 0) for t in telemetries)
+        / max(len(telemetries), 1)
         for i in range(5)
     }
-    prompt = sum(r.result.telemetry.prompt_tokens for r in reviews)
-    cached = sum(r.result.telemetry.cached_tokens for r in reviews)
-    observed = [r.result.telemetry for r in reviews if r.result.telemetry.cached_tokens_exposed]
+    prompt = sum(t.prompt_tokens for t in telemetries)
+    cached = sum(t.cached_tokens for t in telemetries)
+    observed = [t for t in telemetries if t.cached_tokens_exposed]
     observed_prompt = sum(t.prompt_tokens for t in observed)
     return TelemetrySummary(
-        reviews=len(reviews),
+        reviews=len(rows),
         candidates=candidates,
         posted=posted,
-        suppression_rate=sum(f.tier != "post_to_pr" for f in findings) / max(candidates, 1),
+        suppression_rate=sum(f.get("tier") != "post_to_pr" for f in findings) / max(candidates, 1),
         severity_counts=severities,
         stage_ms=stages,
         prompt_tokens=prompt,
@@ -113,6 +118,6 @@ async def telemetry_summary(request: Request) -> TelemetrySummary:
         cache_hit_ratio=sum(t.cached_tokens for t in observed) / observed_prompt
         if observed_prompt
         else None,
-        estimated_cost_usd=sum(r.result.telemetry.estimated_cost_usd for r in reviews),
-        model_profiles=sorted({r.model_profile for r in reviews}),
+        estimated_cost_usd=sum(t.estimated_cost_usd for t in telemetries),
+        model_profiles=sorted({str(row["model_profile"]) for row in rows}),
     )

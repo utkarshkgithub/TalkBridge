@@ -77,7 +77,11 @@ def dedupe_rank(items: list[VerifiedCandidate]) -> list[RankedFinding]:
     )
 
 
-def severity_label(finding: RankedFinding) -> str:
-    if finding.verification.pre_existing:
+def label_for(pre_existing: bool, severity: str) -> str:
+    if pre_existing:
         return "🟣 Pre-existing"
-    return "🔴 Important" if finding.verification.severity == "important" else "🟡 Nit"
+    return "🔴 Important" if severity == "important" else "🟡 Nit"
+
+
+def severity_label(finding: RankedFinding) -> str:
+    return label_for(finding.verification.pre_existing, finding.verification.severity)
