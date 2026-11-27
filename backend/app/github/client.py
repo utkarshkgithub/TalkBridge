@@ -20,10 +20,13 @@ class GitHubFetcher:
         self._identity: tuple[int, str] | None = None
 
     def _app_token(self) -> str:
+        key = self.settings.github_private_key.get_secret_value().replace("\\n", "\n")
+        if not self.settings.github_app_id or not key:
+            raise RuntimeError("GitHub App ID and private key are required")
         now = int(time.time())
         return jwt.encode(
             {"iat": now - 60, "exp": now + 540, "iss": self.settings.github_app_id},
-            self.settings.github_private_key.get_secret_value().replace("\\n", "\n"),
+            key,
             algorithm="RS256",
         )
 
@@ -41,7 +44,11 @@ class GitHubFetcher:
     async def installation_headers(
         self, context: PRContext, *, write: bool = False
     ) -> dict[str, str]:
-        if not context.installation_id or not self.settings.github_app_id:
+        if (
+            not context.installation_id
+            or not self.settings.github_app_id
+            or not self.settings.github_private_key.get_secret_value()
+        ):
             raise RuntimeError("GitHub App ID, private key, and installation ID are required")
         token = self._app_token()
         response = await self.client.post(
@@ -108,7 +115,9 @@ class GitHubFetcher:
             diff=diff_response.text,
             files=files,
             review_rules=rules,
-            commit_subjects=[c["commit"]["message"].splitlines()[0] for c in commits],
+            commit_subjects=[
+                next(iter((c["commit"].get("message") or "").splitlines()), "") for c in commits
+            ],
         )
 
     async def _get(self, path: str, headers: dict[str, str]) -> Any:

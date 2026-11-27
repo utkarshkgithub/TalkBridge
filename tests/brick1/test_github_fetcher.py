@@ -36,7 +36,13 @@ def test_github_app_fetch_uses_installation_and_head_ref() -> None:
                 },
             )
         if path.endswith("/commits"):
-            return httpx.Response(200, json=[{"commit": {"message": "Fix behavior\n\nBody"}}])
+            return httpx.Response(
+                200,
+                json=[
+                    {"commit": {"message": "Fix behavior\n\nBody"}},
+                    {"commit": {"message": ""}},
+                ],
+            )
         if request.headers["Accept"] == "application/vnd.github.diff":
             return httpx.Response(200, text="diff --git a/src/a.py b/src/a.py\n")
         return httpx.Response(200, json={"head": {"sha": "head"}, "base": {"sha": "base"}})
@@ -63,12 +69,15 @@ def test_github_app_fetch_uses_installation_and_head_ref() -> None:
                 source = await GitHubFetcher(settings, client).fetch(context)
             assert source.files == {"src/a.py": "def f(): return 1\n"}
             assert source.review_rules == "Repo rules\n"
-            assert source.commit_subjects == ["Fix behavior"]
+            assert source.commit_subjects == ["Fix behavior", ""]
             with patch("app.github.client.jwt.encode", return_value="signed-jwt"):
                 with pytest.raises(RuntimeError, match="changed since"):
                     await GitHubFetcher(settings, client).fetch(
                         context.model_copy(update={"head_sha": "stale"})
                     )
+            missing_key = Settings(_env_file=None, github_app_id="123")
+            with pytest.raises(RuntimeError, match="private key"):
+                await GitHubFetcher(missing_key, client).installation_headers(context)
 
     asyncio.run(scenario())
     assert len(seen) >= 8
