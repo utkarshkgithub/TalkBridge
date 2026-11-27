@@ -1,224 +1,137 @@
 # TalkBridge
 
-Every component of **TongueSync** involves trade-offs between latency, Indic/code-mixed accuracy, cost, and demo-day reliability. Below is a bottom-up architectural decision record (ADR) that evaluates the viable options at each layer, locks in the best choice with concrete justification, and builds up to a complete, frozen system blueprint.
+**Distilled AI Code Security Reviewer & Unit Test Bot (QLoRA Fine-Tuned 8B LLM + GitHub App)**
+
+TalkBridge is a developer platform that plugs straight into GitHub Pull Requests, strips noisy diffs down to minimal AST/SAST context, scans them via an isolated multi-agent 8B LLM pipeline, and opens concise inline PR review comments with verified patches and optional unit tests — powered by a compact QLoRA fine-tuned model instead of expensive frontier APIs.
+
+- **ML / GenAI Core:** Knowledge distillation + QLoRA fine-tuning of a compact 8B coding model (`Qwen3-8B` / `Qwen3-Coder` or `Llama-3-8B`) via Unsloth, served with vLLM automatic KV prefix caching, constrained JSON (`guided_json`), and multi-LoRA hot-swapping (`finder-lora` + `verifier-lora`).
+- **Full-Stack App:** GitHub App Webhook integration, FastAPI + Redis/Celery async orchestrator, deterministic Tree-sitter + Semgrep Stage 0 pipeline, SQLite/PostgreSQL telemetry store, and a Next.js/React PR diff-viewer dashboard with a live confidence threshold slider (`0–100`).
 
 ---
 
-## 1. Foundational Decisions (Language Pair & Hardware Assumptions)
+## Documentation Map
 
-### Language Pair Selection
+This repository is organized for a **Brick-by-Brick** build where every brick and every small step has explicit specifications and pass/fail test gates:
 
-* **Options:** (A) Hindi ↔ Tamil only, (B) Hindi ↔ English only, (C) **Primary: Hindi (incl. Hinglish) ↔ English + Secondary: Hindi ↔ Tamil**.
-* **Decision: Option C — Primary Hindi/Hinglish ↔ English, with Hindi ↔ Tamil as a selectable pair.**
-* **Why:**
-1. **Easy Verifiability:** If your primary demo is Hindi ↔ Tamil and no one in the room speaks Tamil fluently, a subtle semantic error goes unnoticed—or worse, a Tamil-speaking examiner catches an awkward phrasing you couldn't verify during testing.
-2. **Natural Code-Mixing:** Real Indian code-mixing is overwhelmingly Indic + English (Hinglish: *"kal meeting 5 baje hai, right?"*). Hindi ↔ English lets you directly showcase and grade code-mixed preservation.
-3. **Indic-to-Indic Credibility:** Including Hindi ↔ Tamil as a second selectable language pair proves the architecture generalizes beyond English-centric pipelines without putting your core live demo at risk. You can validate Tamil accuracy offline using AI4Bharat's **IN22-Conv** conversational benchmark and a Tamil-speaking peer.
-
-
-
-### Compute & Budget Constraint
-
-* **Architectural Rule:** Every AI stage (ASR, MT, TTS) must sit behind a clean **Python Adapter Interface** supporting two runtime profiles switchable from the UI:
-1. **Cloud Low-Latency Profile (Primary Demo):** Free-tier/free-credit APIs for sub-1.5s latency and best code-mixed accuracy.
-2. **Local Offline Profile (Backup & Benchmark):** On-device models so the app still runs cleanly over a local hotspot if internet dies, and gives you a rich **Cloud vs. Local latency/accuracy comparison** for your report.
-
-
+| Document | Purpose |
+| :--- | :--- |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | Complete system design: Stage 0–4 data flow, Tree-sitter + Semgrep deterministic pipeline, KV-cached prompt contracts, Pydantic JSON schemas, vLLM multi-LoRA serving, DB/API schema, and dashboard architecture. |
+| [AGENTS.md](./AGENTS.md) | Step-by-step build playbook for coding agents (`Step 1.1` → `Step 4.4`), architectural non-negotiables, and behavioral specs for the runtime review agents (Finders A–D, Adversarial Verifier, Dedupe/Ranker). |
+| [TESTING.md](./TESTING.md) | Concrete tests, fixtures, commands, and exit gates for **every small step** and **every brick** — including the 150–200 diff held-out eval protocol and viva-safe fallback check. |
 
 ---
 
-## 2. Audio Capture, Format & Turn-Taking (VAD)
+## Brick-by-Brick Build Order
 
-| Option | Noise Robustness | Bandwidth | Latency Overhead | Verdict |
-| --- | --- | --- | --- | --- |
-| Push-to-Talk (PTT) only | Immune to noise | Minimal | 0 ms (manual) | Fails "natural conversation" goal as primary mode |
-| Energy/RMS threshold VAD | Breaks in noisy lab/viva rooms | Minimal | ~200 ms | **Rejected** — fans & chatter cause false triggers |
-| Server-side Silero VAD | High | High (streams silence continuously) | Network jitter + server CPU | Unnecessary bandwidth waste on campus Wi-Fi |
-| **Client-side Silero VAD (`@ricky0123/vad-web`) + PTT toggle** | **High (neural speech classifier)** | **Zero during silence** | **350–450 ms hang time** | **Winner** |
+We build and verify each layer sequentially. Do not advance to the next brick until the current brick's exit gate in [TESTING.md](./TESTING.md) passes.
 
-* **Decision:** Run **Silero VAD in the browser** via `@ricky0123/vad-web` (downloads a ~2 MB ONNX model + ONNX Runtime Web WASM once, then runs locally on the client CPU with zero silent audio transmitted), paired with a **Push-to-Talk override toggle** in the UI for loud environment.
-* **Audio Wire Format:** Capture and transmit **16 kHz, 16-bit mono PCM (wrapped in a 44-byte WAV header)** directly from the browser's `AudioWorklet` / VAD float32 buffer.
-* *Why:* Sending `audio/webm` (Opus) from `MediaRecorder` forces the backend to shell out to `ffmpeg` to decode to 16 kHz WAV before ASR—wasting 80–150 ms per turn. A 3-second 16 kHz 16-bit mono clip is only ~96 KB, which transfers in <25 ms on Wi-Fi and feeds directly into every ASR engine without transcoding.
-
-
+| Brick | Goal | Key Steps | Exit Milestone |
+| :--- | :--- | :--- | :--- |
+| **Brick 1 — Deterministic Pipeline (No LLM Yet)** | Zero-token fast path that turns raw GitHub webhooks into clean, minimal AST + SAST chunks. | `1.1` Schemas/config → `1.2` Webhook HMAC intake → `1.3` Diff cleaner → `1.4` Tree-sitter function/caller extractor + `REVIEW.md` → `1.5` Semgrep pre-scan & depth router | Clean minimal `ReviewBundle` JSON for any PR in `<2s` with `0` LLM calls. |
+| **Brick 2 — Base 8B Multi-Agent Orchestrator + Baseline Eval** | Wire untouched 8B model on vLLM through Stages 1–4 and establish immutable baseline metrics. | `2.1` vLLM + prefix cache + `guided_json` → `2.2` Stage 1 parallel isolated Finders (A–D) → `2.3` Stage 2 Adversarial Verifier → `2.4` Stage 3 Dedupe/Rank + Stage 4 PR comments → `2.5` Held-out eval (150–200 diffs) | End-to-end PR review bot working + frozen `baseline_metrics.json` & error logs. |
+| **Brick 3 — Frontend Dashboard & Demo Flow** | Interactive UI, telemetry, and offline/live replay capability. | `3.1` Persistence + REST/replay API → `3.2` Dashboard shell & repo score → `3.3` Diff viewer + live confidence slider (`0–100`) → `3.4` Latency/cost charts + demo mode | **Viva-safe working fallback**: complete working app & live demo even without Brick 4. |
+| **Brick 4 — QLoRA Fine-Tuning (The Upgrade Layer)** | Train `finder-lora` & `verifier-lora` from Brick 2 mistakes, hot-swap into vLLM, and prove gain. | `4.1` Error mining + balanced dataset (~40% clean) → `4.2` Unsloth QLoRA training → `4.3` vLLM multi-LoRA hot-swap → `4.4` Re-run exact Brick 2 eval + 4 ablation charts | Quantified F1/precision/calibration gain on identical held-out diffs + 4 report plots. |
 
 ---
 
-## 3. Real-Time Transport Layer
+## 1. Public Datasets (Training & Held-Out Evaluation)
 
-| Option | Setup Complexity | Campus Wi-Fi / Firewall Risk | Bidirectional Streaming | Verdict |
-| --- | --- | --- | --- | --- |
-| HTTP REST + Polling | Low | None | No (high overhead) | **Rejected** |
-| WebRTC (`aiortc` / LiveKit) | High (ICE/STUN/TURN) | High (UDP blocked on many college LANs) | Yes (full-duplex RTP) | Overkill for turn-based S2ST |
-| **FastAPI Native WebSockets** | **Low** | **Minimal (standard HTTP/HTTPS upgrade)** | **Yes (JSON + Binary frames)** | **Winner** |
+Do not rely on a single noisy vulnerability CSV. Combine paired security-fix datasets with real GitHub PR review datasets so the model learns both what real vulnerabilities look like and how concise inline PR comments read.
 
-* **Decision:** Single **FastAPI WebSocket server** with in-memory Room Management (max 2 peers per room: `User A` and `User B`).
-* **Why:** Because TongueSync uses VAD-segmented turns rather than simultaneous overlapping audio streams, WebRTC's NAT traversal complexity introduces high demo-day failure risk for negligible speed gain. WebSockets support multiplexing JSON control/telemetry frames and raw binary audio chunks over one persistent TCP connection, and work identically over `localhost`, LAN IP, or a phone hotspot.
+| Dataset | Repo / Source (Hugging Face) | What's Inside | Role in TalkBridge |
+| :--- | :--- | :--- | :--- |
+| **CVEfixes** | `hitoshura25/cvefixes` / `rufimelo/cvefixes-cwe` | ~12,987 real vulnerability-fix records across 11,726 CVEs, mapped to CWEs with commit diffs across multiple languages | Primary training data for `vulnerable diff → CWE + fix` pairs |
+| **Code Security Vulnerability Dataset** | `ayshajavd/code-security-vulnerability-dataset` | Covers 16 languages with `code`, `code_fixed`, `cwe_id`, `owasp` category, and `is_vulnerable` flags | Multi-language OWASP training (Python, JS/TS, Java web apps) |
+| **PrimeVul (Paired)** | `starsofchance/PrimeVul` & `Code-TREAT/PrimeVul-Paired_original_lite` | ~7k vulnerable + ~229k benign C/C++ functions across 140+ CWEs with chronological splits and paired before/after patches | Gold-standard held-out evaluation benchmark (chronological splits prevent data leakage) |
+| **GitHub Code Review** | `ronantakizawa/github-codereview` & `muellerzr/github-pr-history` | Real GitHub PR diffs paired with high-signal human inline comments and code suggestions | Fine-tuning PR tone, line localization, and logic-bug reviews |
 
----
-
-## 4. Speech-to-Text (ASR) Engine
-
-| Engine | Hinglish / Code-Mix | Typical Latency (3s clip) | Cost / Free Allowance | Local/Cloud |
-| --- | --- | --- | --- | --- |
-| **Sarvam AI Saaras (`saaras:v3`/`v4`)** | **Best-in-class** (native `codemix` output mode) | ~250–400 ms | **₹100 free signup credits** (₹0.49/min = ~200 min free) | Cloud |
-| **Groq `whisper-large-v3-turbo`** | Good (occasional script drift on Hindi) | **~150–300 ms** | **Free forever tier** (20 RPM, 2,000 RPD, 28.8k audio sec/day) | Cloud |
-| **`faster-whisper` (`small`, INT8)** | Moderate | 1,200–3,000 ms (laptop CPU); ~250 ms (GPU) | ₹0 (open source) | Local |
-| AI4Bharat IndicConformer (30M) | Weak on heavy Hinglish | ~200–400 ms (CPU) | ₹0 (open source) | Local |
-| Bhashini ASR API | Good | Variable | Free, but requires manual DIBD approval with no fixed turnaround time | Cloud |
-
-* **Decision:**
-* **Primary (Live Demo):** **Sarvam AI Speech-to-Text** in **`codemix` mode**, which explicitly retains English words in Latin script inside native Indic scripts (e.g., *"मेरा phone number है 9840950950"*) and handles noisy Indian acoustics and proper nouns.
-* **High-Speed Zero-Credit Alternative:** **Groq `whisper-large-v3-turbo**` (gives you 2,000 free requests/day with no credit card and lets you run a side-by-side WER & latency benchmark against Sarvam).
-* **Offline Fallback:** **`faster-whisper` (`small`, `compute_type="int8"`)** via CTranslate2 for local CPU inference.
-
-
-* **Why Bhashini is rejected for core runtime:** DIBD onboarding requires manual organization review with unpublished wait times—too risky for a 14-week academic schedule. Cite Bhashini in your literature survey, not as your critical-path dependency.
+> **Dataset Balance Rule:** Keep **~40%** of the training set as clean / no-bug diffs (taken from patched `code_fixed` versions or benign functions). Training only on vulnerable snippets causes an 8B model to hallucinate a bug on every PR.
 
 ---
 
-## 5. Machine Translation (MT) & The Code-Mixed Novelty Engine
+## 2. 4-Stage Isolated Multi-Agent Architecture
 
-Standard neural MT models fail predictably on spoken Indian conversations for two reasons:
-
-1. **Intra-sentential code-mixing:** Models trained on clean monolingual corpora (like raw IndicTrans2) degrade when fed mixed scripts (*"kal meeting 5 baje hai, right?"*) or romanized Hinglish idioms (*"chalega"* mistranslated literally as *"will walk"* instead of *"works/fine"*).
-2. **Zero conversational context:** Isolated sentence translation mangles pronouns and replies (*"haan, wahan milte hain"* needs the previous turn's location/context).
-
-| Engine | Code-Mix Handling | Conversational Context | Typical Latency | Cost / Free Tier |
-| --- | --- | --- | --- | --- |
-| **AI4Bharat IndicTrans2 (`dist-200M` / `dist-320M`)** | Weak on raw Hinglish; **strong on clean Indic ↔ Indic** | None | ~150 ms (GPU) / 800–1500 ms (CPU) | ₹0 (Local HF) |
-| **Sarvam Translate (`colloquial` mode)** | **Strong** (supports colloquial Indian phrasing) | Single-turn | ~180–300 ms | ₹2.00 / 1K chars (uses same ₹100 free credits) |
-| **Groq LLM (`qwen3.8-27b` / `gpt-oss-20b`)** | **Excellent** (resolves idioms, slang & entities) | **Yes (2-turn sliding window)** | ~150–250 ms | Free tier (30 RPM, 1,000 RPD, 8K TPM) |
-| Google Translate API | Decent, often overly literal | None | ~200 ms | Requires billing account / unofficial scrapers break |
-
-* **Decision: Build a "Code-Mix Aware Hybrid Translation Router" (Your Primary Technical Novelty).**
-Instead of blindly calling one MT API, implement a deterministic 2-millisecond pre-processing gate in Python before translation:
-1. **Script-Ratio & Code-Mix Classifier (Local Python):** Computes the ratio of Devanagari/Tamil Unicode tokens vs. Latin tokens (ignoring numbers/punctuation) and checks against a small Hinglish stopword/idiom list.
-2. **Routing Logic:**
-* **If Code-Mixed Detected (e.g., `0.10 < latin_ratio < 0.90`) OR Context-Dependent Short Turn (<5 words):** Route to **Groq Fast LLM (`qwen3.8-27b` or `gpt-oss-20b`)** with a strict system prompt (*"Output ONLY the spoken conversational translation in target script; preserve technical nouns/entities; resolve idioms naturally"*) plus the **last 2 conversation turns** as read-only context.
-* **If Pure Monolingual Indic ↔ Indic (e.g., clean Hindi ↔ Tamil):** Route to **Sarvam Translate (`colloquial` mode)** in Cloud Profile, or **AI4Bharat IndicTrans2 (`indictrans2-indic-indic-dist-320M`)** in Local/Academic Benchmark Profile.
-
-
-
-
-* **Why this wins the viva:** It gives you a genuine, measurable algorithmic contribution beyond API glue. You can run an ablation table in your report: **Raw IndicTrans2 vs. Sarvam Colloquial vs. Code-Mix Aware Contextual Router** on Hinglish test sentences.
-
----
-
-## 6. Text-to-Speech (TTS) & Audio Streaming
-
-| Engine | Voice Quality (Indic) | Time-to-First-Byte (TTFB) | Reliability Risk | Cost |
-| --- | --- | --- | --- | --- |
-| **Sarvam `bulbul:v4-flash` (WebSocket)** | **Natural Indian accents & Hinglish pronunciation** | **<250 ms** | Low (official API) | ₹2.00 / 1K chars (₹100 free credits = 50,000 chars!) |
-| **`edge-tts` (`>=7.3.1`)** | Very good (`hi-IN-SwaraNeural`, `ta-IN-PallaviNeural`) | ~350–550 ms | **Medium-High** (unofficial; Microsoft broke `<=7.2.8` with Sec-MS-GEC v2 403 errors in Oct 2026) | ₹0 |
-| **Piper TTS (ONNX Local)** | Functional / slightly synthetic (`hi_IN-pratham-medium`) | ~150–250 ms on CPU (RTF ~0.15–0.20) | **Zero** (100% offline) | ₹0 |
-| Coqui XTTS-v2 | Good | >1,500 ms without GPU | Archived / no commits since Nov 2024 | ₹0 |
-
-* **Decision:**
-* **Primary (Live Demo):** **Sarvam `bulbul:v4-flash` via WebSocket streaming** (`wss://api.sarvam.ai/text-to-speech/ws`). Sub-250ms first-byte streaming plus native Indian prosody makes conversations feel noticeably snappier, and ₹100 of free credits easily covers ~50,000 characters (~700+ demo turns).
-* **Zero-Credit Cloud Alternative:** **`edge-tts >= 7.3.1`** (explicitly pin `>=7.3.1` to include the Sec-MS-GEC v2 fix and ensure NTP clock sync on your demo laptop).
-* **Offline Fallback:** **Piper TTS (ONNX)** (`hi_IN-pratham-medium` + `en_US-lessac-medium`).
-
-
-* **Streaming Playback Optimization:** Pipe TTS audio chunks straight through your FastAPI WebSocket to User B as they arrive rather than waiting for full file synthesis, and play them sequentially via a Web Audio API playback queue. This shaves **300–500 ms** off perceived wait time on longer sentences.
-
----
-
-## 7. Latency Budget & Telemetry Specification
-
-**Processing Latency** is explicitly separate from **Perceived Turn-Gap Latency**:
-
-$$\text{Processing Latency} = T_{\text{first\_audio\_played}} - T_{\text{vad\_end}}$$
-
-$$\text{Perceived Turn-Gap} = T_{\text{first\_audio\_played}} - T_{\text{user\_stopped\_speaking}} = \text{VAD Hang Time} + \text{Processing Latency}$$
-
-| Pipeline Stage | Cloud Profile Target | Local Offline Profile Target | Instrumented Via |
-| --- | --- | --- | --- |
-| VAD Speech-End Hang Time | 350–450 ms | 350–450 ms | Client `performance.now()` |
-| Audio Upload (16 kHz WAV) | 20–40 ms | 5–15 ms (localhost/LAN) | WS timestamp delta |
-| ASR (`Saaras` / `Groq` / `faster-whisper`) | 220–350 ms | 1,200–2,200 ms (CPU) | Server `time.perf_counter()` |
-| Code-Mix Gate + MT (`Router`) | 180–280 ms | 600–1,200 ms (CPU) | Server `time.perf_counter()` |
-| TTS TTFB (`Bulbul v4` / `Piper`) | 200–280 ms | 180–250 ms | Server `time.perf_counter()` |
-| Audio Delivery + Decode | 30–50 ms | 15–30 ms | Client `AudioContext` |
-| **Total Processing Latency** | **~650 – 1,000 ms** | **~2.0 – 3.7 s** | Live Dashboard + SQLite |
-| **Total Perceived Turn-Gap** | **~1.05 – 1.45 s** | **~2.4 – 4.1 s** | Compared vs. Google Translate (3.5–5s+) |
-
----
-
-## 8. Final Frozen Architecture & Tech Stack
-
-### Complete System Stack
-
-| Layer | Frozen Decision |
-| --- | --- |
-| **Frontend** | **React 18 + Vite + TypeScript + Tailwind CSS** (Single-Page App, zero SSR overhead) |
-| **Client Audio / VAD** | `@ricky0123/vad-web` (Silero VAD ONNX) + Web Audio API playback queue + PTT override |
-| **Charts / Live Metrics** | Recharts (stacked horizontal latency bar per turn + rolling P50/P95 cards) |
-| **Backend** | **Python 3.11 + FastAPI + Uvicorn + Pydantic v2** |
-| **Transport** | Native WebSockets (`/ws/{room_id}/{user_id}`) multiplexing JSON metadata + binary PCM/MP3 frames |
-| **ASR Adapters** | `SarvamASRAdapter` (primary, `codemix`) · `GroqWhisperAdapter` (benchmark) · `FasterWhisperAdapter` (offline) |
-| **MT Adapters** | `CodeMixRouter` → `GroqLLMMTAdapter` (Hinglish + 2-turn context) / `SarvamTranslateAdapter` (monolingual) / `IndicTrans2Adapter` (local benchmark) |
-| **TTS Adapters** | `SarvamBulbulWSAdapter` (primary streaming) · `EdgeTTSAdapter` (`>=7.3.1`) · `PiperLocalAdapter` (offline) |
-| **Persistence** | **SQLite (`aiosqlite`)** — stores session turns, transcripts, and stage-wise latency ms for CSV export to your report |
-| **Evaluation Suite** | Standalone Python script using `jiwer` (WER), `sacrebleu` (chrF++ & BLEU), and latency percentile aggregation |
-
-### WebSocket Protocol Contract
-
-Every turn follows a strict 5-event lifecycle over `/ws/{room_id}/{user_id}`:
-
-1. **Client A → Server (JSON):** `{"type": "turn_start", "turn_id": "uuid", "src_lang": "hi-IN", "tgt_lang": "en-IN", "vad_hang_ms": 400, "profile": "cloud_sarvam"}`
-2. **Client A → Server (Binary):** Raw 16 kHz mono WAV bytes of the utterance.
-3. **Server → Both Clients (JSON):** `{"type": "transcript", "turn_id": "uuid", "speaker": "A", "raw_text": "कल meeting 5 बजे है, right?", "is_codemixed": true, "translated_text": "The meeting is at 5 o'clock tomorrow, right?", "mt_route": "llm_contextual"}`
-4. **Server → Client B (Binary stream):** Chunked TTS audio frames (`tts_chunk` header or binary WebSocket frames) followed by `{"type": "tts_end", "turn_id": "uuid"}`.
-5. **Server → Both Clients (JSON):** `{"type": "metrics", "turn_id": "uuid", "asr_ms": 284, "codemix_gate_ms": 2, "mt_ms": 215, "tts_ttfb_ms": 230, "total_processing_ms": 731}`.
-
-### Repository Structure
+Instead of feeding a raw git diff into a single prompt (which causes high noise), TalkBridge adopts a strict 4-stage isolated multi-agent pipeline:
 
 ```text
-tonguesync/
-├── backend/
-│   ├── main.py                 # FastAPI app, WebSocket router, room manager
-│   ├── config.py               # Env keys & runtime profile definitions
-│   ├── pipeline/
-│   │   ├── orchestrator.py     # Async turn execution + perf_counter telemetry
-│   │   ├── codemix_gate.py     # Unicode script-ratio detector & 2-turn memory buffer
-│   │   ├── asr/                # base.py, sarvam.py, groq_whisper.py, faster_whisper.py
-│   │   ├── mt/                 # base.py, groq_llm.py, sarvam.py, indictrans2.py
-│   │   └── tts/                # base.py, sarvam_ws.py, edge_tts.py, piper_local.py
-│   ├── storage/
-│   │   └── metrics_db.py       # SQLite logger + /api/export-csv endpoint
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── hooks/
-│   │   │   ├── useVadRecorder.ts   # Silero VAD + 16kHz WAV encoder + PTT fallback
-│   │   │   ├── useRoomSocket.ts    # WebSocket state machine
-│   │   │   └── useAudioQueue.ts    # Gapless Web Audio API chunk playback
-│   │   ├── components/
-│   │   │   ├── ConversationPane.tsx # Dual-language chat bubbles + script badges
-│   │   │   ├── LatencyDashboard.tsx # Stacked stage-breakdown chart + P50/P95
-│   │   │   └── ControlBar.tsx       # Language selector, Profile toggle, VAD slider
-│   │   └── App.tsx
-└── evaluation/
-    ├── test_dataset.json       # 60 utterances (20 Hindi, 20 Hinglish, 20 En/Ta)
-    ├── run_benchmark.py        # Computes WER (jiwer), chrF++ (sacrebleu), P50/P95 ms
-    └── results/                # Auto-generated CSVs & matplotlib plots for report
-
+GitHub PR Webhook
+       │
+       ▼
+[Stage 0: Deterministic Pre-Filter & Context] ──► Diff cleaner + Tree-sitter AST callers + Semgrep + REVIEW.md
+       │
+       ▼
+[Stage 1: Parallel Isolated Finders]          ──► Specialist agents run independently (no shared output):
+   ├── Agent A: Security & OWASP                  (injection, auth bypass, secrets, SSRF + Semgrep hints)
+   ├── Agent B: Logic & Edge Cases                (null refs, race conditions, off-by-one, regressions)
+   ├── Agent C: Repo Rules Compliance             (checks project's REVIEW.md / CLAUDE.md guidelines)
+   └── Agent D: Git History / Callers             (checks touched callers & recent commits for regressions)
+       │
+       ▼
+[Stage 2: Adversarial Verifier]               ──► Skeptical agent tries to DISPROVE each finding against
+       │                                          surrounding code; scores confidence 0–100
+       │                                          (Hard gate: >=80 PR post | 50–79 dashboard | <50 drop)
+       ▼
+[Stage 3: Deduplicate & Rank]                 ──► Merges overlapping issues; tags severity:
+       │                                          🔴 Important | 🟡 Nit | 🟣 Pre-existing
+       ▼
+[Stage 4: Post to GitHub PR]                  ──► Inline diff comments + 1 high-signal summary
+                                                  + neutral GitHub Check Run (never auto-blocks merge)
 ```
+
+### The 5 Architectural Rules
+
+1. **Context Isolation in Stage 1:** Parallel finder agents must never see each other's outputs during scanning, preventing confirmation bias.
+2. **Adversarial Verification:** Instead of asking *"Is this a bug?"*, Stage 2 actively attempts to **refute** each finding by citing surrounding code — pushing false positives below 1%.
+3. **Confidence Threshold Gating (`>= 80`):** Score every verified finding `0–100`. Post `80–100` to the GitHub PR, log `50–79` in the dashboard only, and silently discard `0–49`.
+4. **Correctness Over Style by Default:** Ignore formatting, naming nits, and missing docstrings unless explicitly requested in the repo's `REVIEW.md` (injected at highest priority).
+5. **Non-Blocking Check Runs:** Post findings as inline comments with a `neutral` GitHub Check Run status so the bot assists engineers without blocking merges on false alarms.
 
 ---
 
-## 9. Evaluation Methodology
+## 3. Systems & ML Optimizations
 
-1. **Test Set Construction (`evaluation/test_dataset.json`):** Record 60 short conversational turns (3–6 seconds each) split evenly across:
-* 20 Clean Monolingual Hindi → English (and reverse)
-* 20 Code-Mixed Hinglish → English (with numbers, entities, and idioms like *"kal 5 baje ka slot book kar do"*, *"ye code deploy karna padega"*)
-* 20 Hindi ↔ Tamil conversational pairs (sourced/adapted from AI4Bharat's **IN22-Conv**)
+1. **Deterministic Pre-Filter (Zero-Token Fast Path):**
+   - Strip lockfiles (`package-lock.json`, `poetry.lock`), minified bundles, binaries, and formatting-only hunks.
+   - Use **Tree-sitter** to extract only modified functions plus their immediate caller signatures rather than dumping entire files.
+   - Run lightweight **Semgrep** rules for deterministic syntax patterns (hardcoded API keys, `eval()`, raw SQL string interpolation) and feed hints to Agent A.
+2. **Automatic KV Prefix Caching:**
+   - Place static PR context, `REVIEW.md`, and cleaned diff chunks at the **start** of the prompt and each agent's role instruction at the **end**.
+   - Serve with vLLM `--enable-prefix-caching` so prompt prefill runs once and KV tensors are reused across parallel Stage 1 agents (`50–70%` review latency reduction).
+3. **Single Base Model + Multi-LoRA Serving:**
+   - Serve one 4-bit quantized 8B base model in vLLM and hot-swap tiny (`~50 MB`) task-specific adapters per stage:
+     - `finder-lora`: fine-tuned on CVEfixes + Code Security + GitHub Code Review to locate bugs & CWEs.
+     - `verifier-lora`: fine-tuned on paired vulnerable vs. patched/benign examples to separate true positives from false alarms.
+4. **Constrained JSON Decoding (`guided_json`):**
+   - Enforce Pydantic JSON schemas inside vLLM at inference time so every finding strictly conforms without regex hacks or retry loops:
+     ```json
+     {
+       "file": "auth/login.py",
+       "line_start": 42,
+       "line_end": 48,
+       "category": "security",
+       "cwe_id": "CWE-89",
+       "severity": "important",
+       "confidence": 92,
+       "reasoning": "...",
+       "suggested_patch": "..."
+     }
+     ```
+5. **Adaptive Depth Routing (`Quick` / `Standard` / `Deep`):**
+   - **Quick** (`< 50 LOC`, non-critical paths): 1 Finder Agent + Verifier.
+   - **Standard** (`50–300 LOC`): 3 Parallel Agents (Security, Logic, Repo Rules) + Verifier.
+   - **Deep** (`> 300 LOC` or touches `auth/`, `db/`, `payments/`): All 4 Parallel Agents + Verifier + optional sandboxed unit-test check.
 
+---
 
-2. **Metrics to Report:**
-* **ASR Accuracy:** Word Error Rate (**WER**) via `jiwer` comparing Sarvam Saaras vs. Groq Whisper Turbo vs. Local `faster-whisper`.
-* **Translation Quality:** **chrF++** (not just BLEU — explicitly note in your viva that chrF++ operates on character n-grams, making it far more accurate for morphologically rich Indian languages like Hindi and Tamil) via `sacrebleu`.
-* **Code-Mix Ablation:** Show chrF++ & human accuracy on the 20 Hinglish sentences with **Router OFF (Raw NMT)** vs. **Router ON (Code-Mix Contextual LLM)**.
-* **Latency & Baseline Comparison:** P50/P95 stage breakdown table + side-by-side turn-gap comparison against **Google Translate Conversation Mode** measured over 10 identical turns.
-* **Subjective Quality:** Mean Opinion Score (MOS, 1–5 scale for naturalness & intelligibility) rated by 5–10 peers.
+## 4. Team Split & Evaluation Charts
+
+- **ML / Model Pipeline (1–2 people):** Curate `1,500–2,500` balanced examples (`~40%` clean negatives), train `finder-lora` & `verifier-lora` with Unsloth, serve via vLLM with prefix caching and `guided_json`, run held-out benchmarks.
+- **Backend / Orchestrator (1 person):** FastAPI + Redis/Celery worker for GitHub Webhooks, diff cleaning, Tree-sitter + Semgrep Stage 0, parallel async Stages 1–4, GitHub PR Review API, and telemetry DB.
+- **Frontend Dashboard (1 person):** Next.js/React dashboard with repo security trends, interactive PR diff viewer with inline comments, live confidence threshold slider (`0–100`), and latency/cost telemetry charts.
+
+### The 4 Ablation Charts for Evaluation
+
+1. **Single-Agent vs. Multi-Agent + Verifier:** Precision jump and false-positive rate drop when adding Stage 2 adversarial verification.
+2. **Base 8B vs. Fine-Tuned 8B vs. Frontier Teacher:** Bug-detection F1, CWE classification accuracy, and JSON schema validity on the held-out `150–200` diff split.
+3. **Confidence Threshold Curve (`40 → 60 → 80 → 90`):** Precision vs. Recall curve empirically justifying `80` as the PR-posting threshold.
+4. **Latency & Cost Benchmark:** Prefix-cached 8B pipeline (seconds, fractions of a cent per PR) vs. frontier API pricing (`$15–$25/PR` for deep multi-agent reviews).
