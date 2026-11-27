@@ -80,3 +80,8 @@ def test_git_quoted_utf8_filename() -> None:
 """
     assert clean_diff(raw)[0].file == "café.py"
     assert clean_diff(raw.replace(r"caf\303\251.py", "café name.py"))[0].file == "café name.py"
+
+
+def test_malformed_quoted_path_does_not_crash() -> None:
+    raw = 'diff --git a/a.py b/a.py\n--- "a/unclosed.py\n+++ "b/unclosed.py\n@@ -1 +1 @@\n-old()\n+new()\n'
+    assert clean_diff(raw)[0].file == "unclosed.py"

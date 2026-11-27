@@ -61,12 +61,16 @@ def _normalized(lines: list[str], python: bool) -> list[tuple[str, ...]]:
 def _path(header: str) -> str:
     value = header[4:].split("\t", 1)[0]
     if value.startswith('"'):
-        # Git quotes UTF-8 bytes using octal escapes, not Unicode code points.
-        value = (
-            ast.literal_eval("b" + value).decode("utf-8")
-            if value.isascii()
-            else ast.literal_eval(value)
-        )
+        try:
+            decoded = (
+                ast.literal_eval("b" + value).decode("utf-8")
+                if value.isascii()
+                else ast.literal_eval(value)
+            )
+            if isinstance(decoded, str):
+                value = decoded
+        except (SyntaxError, ValueError, UnicodeDecodeError):
+            value = value.strip('"')
     return value[2:] if value.startswith(("a/", "b/")) else value
 
 
