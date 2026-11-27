@@ -1,7 +1,6 @@
 import pytest
-from pydantic import ValidationError
-
 from app.core.config import Settings, get_settings
+from pydantic import ValidationError
 
 
 def test_settings_defaults_and_env_override(monkeypatch: pytest.MonkeyPatch) -> None:

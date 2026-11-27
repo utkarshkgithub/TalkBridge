@@ -1,0 +1,29 @@
+rules:
+  - id: python-dynamic-eval
+    languages: [python]
+    severity: ERROR
+    message: Dynamic eval can execute untrusted code. Verify the input source.
+    metadata:
+      cwe: CWE-95
+    pattern: eval($INPUT)
+  - id: python-sql-fstring
+    languages: [python]
+    severity: ERROR
+    message: SQL executed through an f-string may allow injection. Verify bindings.
+    metadata:
+      cwe: CWE-89
+    pattern: $DB.execute(f"...")
+  - id: python-hardcoded-api-key
+    languages: [python]
+    severity: WARNING
+    message: Possible hardcoded API key. Verify whether this is a real credential.
+    metadata:
+      cwe: CWE-798
+    patterns:
+      - pattern: $KEY = $VALUE
+      - metavariable-regex:
+          metavariable: $KEY
+          regex: (?i).*(api_key|apikey|secret_key|access_token)$
+      - metavariable-regex:
+          metavariable: $VALUE
+          regex: ^["'][A-Za-z0-9_\-]{16,}["']$

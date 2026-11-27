@@ -1,0 +1,15 @@
+{
+  "context": {
+    "delivery_id": "clean_small_pr",
+    "action": "opened",
+    "repo_full_name": "college/demo",
+    "pr_number": 1,
+    "base_sha": "fixture-base",
+    "head_sha": "fixture-head"
+  },
+  "diff": "diff --git a/src/helpers.py b/src/helpers.py\n--- /dev/null\n+++ b/src/helpers.py\n@@ -0,0 +1,2 @@\n+def greet(name):\n+    return f\"Hello {name}\"\n",
+  "files": {
+    "src/helpers.py": "def greet(name):\n    return f\"Hello {name}\"\n"
+  },
+  "review_rules": "Report actionable security and correctness bugs.\n"
+}

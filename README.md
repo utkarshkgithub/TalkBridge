@@ -5,9 +5,89 @@
 TalkBridge is a developer platform that plugs straight into GitHub Pull Requests, strips noisy diffs down to minimal AST/SAST context, scans them via an isolated multi-agent 8B LLM pipeline, and opens concise inline PR review comments with verified patches and optional unit tests — powered by a compact QLoRA fine-tuned model instead of expensive frontier APIs.
 
 - **ML / GenAI Core:** Knowledge distillation + QLoRA fine-tuning of a compact 8B coding model (`Qwen3-8B` / `Qwen3-Coder` or `Llama-3-8B`) via Unsloth, served with vLLM automatic KV prefix caching, constrained JSON (`guided_json`), and multi-LoRA hot-swapping (`finder-lora` + `verifier-lora`).
-- **Full-Stack App:** GitHub App Webhook integration, FastAPI + Redis/Celery async orchestrator, deterministic Tree-sitter + Semgrep Stage 0 pipeline, SQLite/PostgreSQL telemetry store, and a Next.js/React PR diff-viewer dashboard with a live confidence threshold slider (`0–100`).
+- **Full-Stack App:** GitHub App Webhook integration, FastAPI + bounded asyncio workers, deterministic Tree-sitter + Semgrep Stage 0 pipeline, Docker PostgreSQL telemetry store, and a Next.js/React PR diff-viewer dashboard with a live confidence threshold slider (`0–100`).
 
 ---
+
+
+## Current implementation: Brick 1
+
+Brick 1 implements signed GitHub webhook intake, bounded asyncio workers, diff cleaning,
+Tree-sitter context extraction, local Semgrep hints, and adaptive review depth. Bricks 2 through 4
+below describe planned work. The frontend remains the existing Next.js scaffold until Brick 3.
+
+This college-project profile uses free local tools, a backend virtual environment, and Docker
+PostgreSQL. It requires no paid API, Redis, or Celery. PostgreSQL is provisioned now; review
+persistence is implemented in Brick 3. Read [BUILD_STATUS.md](./BUILD_STATUS.md) for limits and gates.
+
+### Run locally
+
+Requirements: Python 3.13+, uv, Node.js 20.9+, npm, and Docker Compose.
+
+```bash
+# Repository root. PostgreSQL stays local to this machine.
+docker compose up -d --wait db
+
+cd backend
+uv sync --locked
+cp ../.env.example .env
+# Set GITHUB_WEBHOOK_SECRET and GitHub App credentials in .env for live webhooks.
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Use exactly one Uvicorn process. Its bounded worker queue and delivery cache are in memory.
+Restarting the backend clears pending jobs, delivery IDs, and the most recent 100 bundles.
+Do not use this development worker for deployments that require durable jobs.
+
+The GitHub App needs repository Contents and Pull requests read access for Brick 1.
+Subscribe to pull request events and point GitHub at a publicly reachable HTTPS URL ending in
+`/webhooks/github`. GitHub cannot reach `localhost` directly. Later publishing permissions belong
+to Brick 2. `GET /health` checks the API process, not GitHub or database connectivity.
+
+Run an offline fixture without GitHub credentials or an LLM:
+
+```bash
+cd backend
+uv run python -m app.pipeline ../evaluation/fixtures/auth_sqli_pr.json
+```
+
+The command prints a validated `ReviewBundle`. It exits nonzero if Semgrep cannot complete.
+Each scan uses local rules, disables metrics/version checks, and has a five-second wall-clock cap.
+A scan error remains visible in `sast_status` and `warnings`; it is never reported as a clean scan.
+Current local rules cover Python eval, SQL f-strings, hardcoded API keys, and JS/TS eval.
+SAST hints are review context, not verified vulnerabilities.
+
+By default, whitespace-only edits are excluded while preserving Python indentation, literal contents,
+and token boundaries. To review style changes, set `ENFORCE_STYLE_DIFF=true` or include
+`<!-- talkbridge: enforce-style -->` in `REVIEW.md` (or fallback `CLAUDE.md`).
+
+### Checks before each phase commit
+
+```bash
+# Repository root, after uv sync in backend.
+backend/.venv/bin/pytest tests/brick1 backend/tests -v
+backend/.venv/bin/mypy --config-file backend/pyproject.toml backend/app
+backend/.venv/bin/ruff check --config backend/pyproject.toml backend/app backend/tests tests
+backend/.venv/bin/ruff format --check --config backend/pyproject.toml backend/app backend/tests tests
+cd backend
+uv run python -m build --wheel --no-isolation
+cd ../frontend
+npm ci
+npm run typecheck
+npm run lint
+npm run build
+```
+
+If the host restricts Turbopack's local build port, run all frontend checks in Docker:
+
+```bash
+# Repository root.
+docker build -f frontend/Dockerfile.check -t talkbridge-frontend-check frontend
+```
+
+The backend wheel includes the local Semgrep rules. Build it from this repository checkout.
+Docker database check: `docker compose exec -T db pg_isready -U postgres -d talkbridge`.
+Stop services with `docker compose stop`; named database volume remains intact.
 
 ## Documentation Map
 
@@ -126,7 +206,7 @@ GitHub PR Webhook
 ## 4. Team Split & Evaluation Charts
 
 - **ML / Model Pipeline (1–2 people):** Curate `1,500–2,500` balanced examples (`~40%` clean negatives), train `finder-lora` & `verifier-lora` with Unsloth, serve via vLLM with prefix caching and `guided_json`, run held-out benchmarks.
-- **Backend / Orchestrator (1 person):** FastAPI + Redis/Celery worker for GitHub Webhooks, diff cleaning, Tree-sitter + Semgrep Stage 0, parallel async Stages 1–4, GitHub PR Review API, and telemetry DB.
+- **Backend / Orchestrator (1 person):** FastAPI + bounded asyncio worker for GitHub Webhooks, diff cleaning, Tree-sitter + Semgrep Stage 0, parallel async Stages 1–4, GitHub PR Review API, and telemetry DB.
 - **Frontend Dashboard (1 person):** Next.js/React dashboard with repo security trends, interactive PR diff viewer with inline comments, live confidence threshold slider (`0–100`), and latency/cost telemetry charts.
 
 ### The 4 Ablation Charts for Evaluation

@@ -1,0 +1,8 @@
+rules:
+  - id: javascript-dynamic-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: Dynamic eval can execute untrusted code. Verify the input source.
+    metadata:
+      cwe: CWE-95
+    pattern: eval($INPUT)

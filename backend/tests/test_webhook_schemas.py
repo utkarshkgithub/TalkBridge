@@ -1,7 +1,6 @@
 import pytest
-from pydantic import ValidationError
-
 from app.webhooks.schemas import PRContext, WebhookAck
+from pydantic import ValidationError
 
 
 def test_pr_context_json_roundtrip() -> None:

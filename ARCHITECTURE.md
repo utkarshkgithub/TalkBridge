@@ -4,6 +4,14 @@ This document defines the end-to-end technical architecture of **TalkBridge** ac
 
 ---
 
+## Implementation profile
+
+The active college-project profile uses a bounded in-process asyncio queue instead of Redis/Celery,
+Python in `backend/.venv`, the existing Next.js frontend, and PostgreSQL in Docker.
+No paid services are required. SQLite is not part of this profile. Review persistence remains
+scheduled for Brick 3. The local queue and delivery cache are intentionally ephemeral and require
+one API process. See [BUILD_STATUS.md](./BUILD_STATUS.md) for completed work.
+
 ## 1. Architectural Principles & Hard Invariants
 
 1. **Zero-Token Fast Path (Brick 1 Isolation):** Stage 0 (webhook validation, diff cleaning, Tree-sitter AST slicing, Semgrep SAST) must operate deterministically with zero LLM dependencies.
@@ -33,7 +41,7 @@ This document defines the end-to-end technical architecture of **TalkBridge** ac
 │         │                  minified, fmt-only)   immediate callers + REVIEW.md)│
 │         │                                              │                     │
 │         ▼                                              ▼                     │
-│  [Redis / Celery Queue] ◄─────────────── [1.5 Semgrep Pre-Scan + Depth Router]
+│  [Bounded asyncio Queue] ◄─────────────── [1.5 Semgrep Pre-Scan + Depth Router]
 └────────────────────────────────────────────────────────┬─────────────────────┘
                                                          │ ReviewBundle JSON
                                                          ▼
@@ -100,9 +108,9 @@ TalkBridge/
 │   │   ├── github/
 │   │   │   └── pr_publisher.py      # Inline diff comments, PR summary, neutral Check Run
 │   │   ├── workers/
-│   │   │   └── tasks.py             # Celery/Redis background job wrapper
+│   │   │   └── tasks.py             # Bounded asyncio background worker
 │   │   └── storage/
-│   │       ├── db.py                # SQLite (default) / Postgres async persistence
+│   │       ├── db.py                # Docker PostgreSQL async persistence
 │   │       └── api.py               # /api/reviews, /api/metrics, /api/demo/replay
 ├── frontend/
 │   ├── package.json
@@ -248,7 +256,7 @@ Every Stage 2 verification request uses `guided_json=VerifierOutput.model_json_s
 
 ## 6. Brick 3 — Frontend Dashboard, Persistence & Viva-Safe Demo Flow
 
-### 6.1 Persistence Schema (`storage/db.py` — SQLite default / Postgres optional)
+### 6.1 Persistence Schema (`storage/db.py` — Docker PostgreSQL)
 - `reviews`: `id`, `repo`, `pr_number`, `commit_sha`, `depth_mode`, `model_profile` (`base_8b` | `lora_8b`), `status`, `created_at`, `stage0_ms`, `stage1_ms`, `stage2_ms`, `stage3_ms`, `stage4_ms`, `kv_cache_hit_ratio`, `estimated_cost_usd`.
 - `diff_hunks`: `id`, `review_id`, `file_path`, `cleaned_diff`, `ast_context`, `sast_hints_json`.
 - `findings`: `id`, `review_id`, `source_agent`, `file_path`, `line_start`, `line_end`, `category`, `cwe_id`, `severity`, `pre_existing`, `raw_confidence`, `calibrated_confidence`, `verdict`, `refutation_attempt`, `reasoning`, `suggested_patch`, `unit_test`, `posted_to_pr`.

@@ -1,0 +1,15 @@
+{
+  "context": {
+    "delivery_id": "auth_sqli_pr",
+    "action": "opened",
+    "repo_full_name": "college/demo",
+    "pr_number": 1,
+    "base_sha": "fixture-base",
+    "head_sha": "fixture-head"
+  },
+  "diff": "diff --git a/auth/login.py b/auth/login.py\n--- /dev/null\n+++ b/auth/login.py\n@@ -0,0 +1,3 @@\n+def login(cursor, uid):\n+    cursor.execute(f\"SELECT * FROM users WHERE id = {uid}\")\n+    return cursor.fetchone()\n",
+  "files": {
+    "auth/login.py": "def login(cursor, uid):\n    cursor.execute(f\"SELECT * FROM users WHERE id = {uid}\")\n    return cursor.fetchone()\n"
+  },
+  "review_rules": "Report actionable security and correctness bugs.\n"
+}
