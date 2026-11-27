@@ -1,11 +1,11 @@
 import type { Review, Telemetry } from "@/lib/types";
 import { healthScore, isPartialReview } from "@/lib/api";
 import {
-  ShieldCheck,
-  ScanLine,
-  SlidersHorizontal,
-  GitPullRequest,
-} from "lucide-react";
+  LuShieldCheck as ShieldCheck,
+  LuScanLine as ScanLine,
+  LuSlidersHorizontal as SlidersHorizontal,
+  LuGitPullRequest as GitPullRequest,
+} from "react-icons/lu";
 
 export function RepoHealthCard({
   reviews,

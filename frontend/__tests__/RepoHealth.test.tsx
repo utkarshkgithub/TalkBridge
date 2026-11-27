@@ -3,7 +3,10 @@ import { describe, it, expect, vi } from "vitest";
 import { Dashboard } from "@/components/Dashboard";
 import { RepoHealthCard } from "@/components/RepoHealthCard";
 import { review, telemetry } from "./fixture";
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => "/dashboard",
+}));
 
 describe("RepoHealth", () => {
   it("shows suppression and heuristics from the API data", () => {

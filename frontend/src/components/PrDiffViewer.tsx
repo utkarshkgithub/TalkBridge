@@ -1,14 +1,14 @@
 "use client";
 import { Fragment, useState } from "react";
 import {
-  Code2,
-  FileCode2,
-  ShieldCheck,
-  Copy,
-  Check,
-  ChevronDown,
-  GitBranch,
-} from "lucide-react";
+  LuCodeXml as Code2,
+  LuFileCode2 as FileCode2,
+  LuShieldCheck as ShieldCheck,
+  LuCopy as Copy,
+  LuCheck as Check,
+  LuChevronDown as ChevronDown,
+  LuGitBranch as GitBranch,
+} from "react-icons/lu";
 import type { Review, Finding } from "@/lib/types";
 import { visibleFindings } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ function FindingCard({ finding }: { finding: Finding }) {
   async function copy() {
     try {
       await navigator.clipboard.writeText(f.candidate.suggested_patch || "");
+      setCopyError(false);
       setCopied(true);
     } catch {
       setCopyError(true);
@@ -144,6 +145,7 @@ export function PrDiffViewer({ review }: { review: Review }) {
             <button
               key={file}
               className={`file-button ${currentFile === file ? "selected" : ""}`}
+              aria-pressed={currentFile === file}
               onClick={() => setActiveFile(file)}
             >
               <FileCode2 size={15} />

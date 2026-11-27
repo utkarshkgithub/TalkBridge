@@ -100,7 +100,9 @@ cp .env.example .env.local
 npm run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
-Open `http://127.0.0.1:3000`. The dashboard has Overview, All reviews and Insights pages,
+Open `http://127.0.0.1:3000` for the landing page, then sign in to reach the dashboard.
+Local test credentials and provider setup are documented in [frontend/README.md](frontend/README.md).
+The dashboard has Overview, All reviews, Insights, Pipeline, and Connections pages,
 search/filter controls, severity and latency charts, and a paginated review list. A review
 shows unified source diffs, line-anchored findings, verifier reasoning, patch copying and a
 keyboard-accessible confidence slider. Changing the slider is entirely local and never
@@ -113,8 +115,10 @@ separate from threshold eligibility. PostgreSQL must be running locally for pers
 
 The frontend uses a same-origin `/api/backend/*` proxy with an allowlist. Its server-only
 `BACKEND_URL` defaults to `http://127.0.0.1:8000`; no model or GitHub credentials enter the browser.
-APIs are a local-development surface without account authentication. Keep the documented
-loopback bindings for the college demonstration.
+The frontend requires a server session before proxying dashboard requests. Production backend
+APIs also require a shared `DASHBOARD_API_KEY`; set backend `APP_ENV=prod` to enforce it.
+Keep the backend private and use the documented loopback bindings for local development.
+This remains a single shared workspace, with account-specific OAuth connections.
 
 To run the sample scenarios through actual inference, set `REVIEW_ENABLED=true` and
 `DEMO_REPLAY_MODE=false` with a working vLLM endpoint, then use **Run live**. This review path

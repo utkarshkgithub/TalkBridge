@@ -12,7 +12,7 @@ backend/dist/
 
 # Node / Frontend
 frontend/node_modules/
-frontend/.next/
+.next/
 frontend/out/
 .env*.local
 npm-debug.log*
@@ -22,3 +22,7 @@ npm-debug.log*
 frontend/test-results/
 frontend/playwright-report/
 frontend/.sites-runtime/
+
+# Local authentication database journals
+*.db-shm
+*.db-wal

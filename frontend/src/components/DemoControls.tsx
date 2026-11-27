@@ -1,6 +1,10 @@
 "use client";
 import { useState } from "react";
-import { Play, Radio, LoaderCircle } from "lucide-react";
+import {
+  LuPlay as Play,
+  LuRadio as Radio,
+  LuLoaderCircle as LoaderCircle,
+} from "react-icons/lu";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -38,8 +42,8 @@ export function DemoControls({
           <Play size={16} />
         </div>
         <div>
-          <h3>See the signal, skip the setup.</h3>
-          <p>Explore a recorded review. No GPU or internet needed.</p>
+          <h3>Start a review</h3>
+          <p>Choose a scenario to replay or run live.</p>
         </div>
       </div>
       <div className="demo-actions">
@@ -67,7 +71,11 @@ export function DemoControls({
             <SelectItem value="clean_small_pr">Clean pull request</SelectItem>
           </SelectContent>
         </Select>
-        <Button onClick={() => run("replay")} disabled={!!busy}>
+        <Button
+          className="replay-button"
+          onClick={() => run("replay")}
+          disabled={!!busy}
+        >
           {busy === "replay" ? (
             <LoaderCircle className="animate-spin" />
           ) : (

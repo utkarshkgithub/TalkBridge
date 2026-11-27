@@ -1,6 +1,10 @@
 import type { Telemetry, Review } from "@/lib/types";
 import { healthScore, isPartialReview } from "@/lib/api";
-import { Activity, Zap, CircleHelp } from "lucide-react";
+import {
+  LuActivity as Activity,
+  LuZap as Zap,
+  LuCircleHelp as CircleHelp,
+} from "react-icons/lu";
 
 export function TelemetryCharts({
   telemetry,
@@ -40,8 +44,16 @@ export function TelemetryCharts({
           >
             <defs>
               <linearGradient id="health-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#9184f5" stopOpacity=".23" />
-                <stop offset="100%" stopColor="#9184f5" stopOpacity="0" />
+                <stop
+                  offset="0%"
+                  stopColor="var(--chart-color)"
+                  stopOpacity=".12"
+                />
+                <stop
+                  offset="100%"
+                  stopColor="var(--chart-color)"
+                  stopOpacity="0"
+                />
               </linearGradient>
             </defs>
             {[40, 95, 150].map((y) => (
@@ -51,7 +63,7 @@ export function TelemetryCharts({
                 x2="580"
                 y1={y}
                 y2={y}
-                stroke="#282830"
+                stroke="var(--border)"
                 strokeDasharray="3 5"
               />
             ))}
@@ -62,7 +74,7 @@ export function TelemetryCharts({
             <polyline
               points={points}
               fill="none"
-              stroke="#a597fc"
+              stroke="var(--chart-color)"
               strokeWidth="2.5"
             />
             {history.map((r, i) => (
@@ -71,7 +83,7 @@ export function TelemetryCharts({
                 cx={20 + i * (560 / Math.max(history.length - 1, 1))}
                 cy={150 - healthScore(r) * 1.1}
                 r="4"
-                fill="#b9adff"
+                fill="var(--chart-color)"
               >
                 <title>
                   PR #{r.result.bundle.context.pr_number}: {healthScore(r)}/100

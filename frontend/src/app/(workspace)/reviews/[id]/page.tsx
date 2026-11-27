@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { requireUser } from "@/lib/auth/session";
 import { Dashboard } from "@/components/Dashboard";
 
 export default function ReviewPage({ params }: PageProps<"/reviews/[id]">) {
@@ -17,6 +18,7 @@ export default function ReviewPage({ params }: PageProps<"/reviews/[id]">) {
 async function ReviewContent({
   params,
 }: Pick<PageProps<"/reviews/[id]">, "params">) {
+  await requireUser();
   const { id } = await params;
   return <Dashboard key={id} section="reviews" reviewId={id} />;
 }

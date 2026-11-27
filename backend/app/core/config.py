@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     app_env: Literal["dev", "test", "prod"] = "dev"
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/talkbridge"
+    dashboard_api_key: SecretStr = SecretStr("")
     github_webhook_secret: SecretStr = SecretStr("")
     github_app_id: str = ""
     github_private_key: SecretStr = SecretStr("")
@@ -51,6 +52,12 @@ class Settings(BaseSettings):
     verifier_concurrency: int = Field(default=4, ge=1, le=16)
     max_candidates_per_agent: int = Field(default=20, ge=1, le=100)
     prompt_max_chars: int = Field(default=100000, ge=1000)
+
+    @model_validator(mode="after")
+    def _require_dashboard_key(self) -> "Settings":
+        if self.app_env == "prod" and len(self.dashboard_api_key.get_secret_value()) < 32:
+            raise ValueError("DASHBOARD_API_KEY must contain at least 32 characters in production")
+        return self
 
     @field_validator("database_url")
     @classmethod

@@ -10,7 +10,19 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className="dark">
+    <html
+      lang="en"
+      className="dark"
+      data-appearance="dark"
+      suppressHydrationWarning
+    >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('talkbridge-theme');t=t==='system'||t==='light'?t:'dark';document.documentElement.dataset.appearance=t;document.documentElement.classList.toggle('dark',t==='dark'||t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches)}catch{}})()`,
+          }}
+        />
+      </head>
       <body>{children}</body>
     </html>
   );

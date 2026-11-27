@@ -1,9 +1,14 @@
 import type { NextRequest } from "next/server";
+import { getUser, appUrl } from "@/lib/auth/session";
 
 async function proxy(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
+  if (!(await getUser()))
+    return Response.json({ detail: "Sign in required" }, { status: 401 });
+  if (request.method === "POST" && request.headers.get("origin") !== appUrl())
+    return Response.json({ detail: "Invalid request origin" }, { status: 403 });
   const { path } = await params;
   const route = path.join("/");
   const allowed =
@@ -26,6 +31,7 @@ async function proxy(
   try {
     const response = await fetch(target, {
       method: request.method,
+      headers: { "X-TalkBridge-Key": process.env.DASHBOARD_API_KEY || "" },
       cache: "no-store",
       signal: AbortSignal.timeout(180000),
     });

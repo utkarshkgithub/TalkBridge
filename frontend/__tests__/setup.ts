@@ -11,11 +11,13 @@ class ResizeObserverStub {
   disconnect() {}
 }
 vi.stubGlobal("ResizeObserver", ResizeObserverStub);
-Object.defineProperty(window, "matchMedia", {
-  writable: true,
-  value: vi.fn().mockImplementation(() => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {},
-  })),
-});
+if (typeof window !== "undefined") {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation(() => ({
+      matches: false,
+      addEventListener() {},
+      removeEventListener() {},
+    })),
+  });
+}
