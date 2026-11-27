@@ -105,3 +105,12 @@ def test_scanner_treats_dash_filename_as_target(monkeypatch: pytest.MonkeyPatch)
     assert scanner.scan({"-target.py": "x=1"}, added("-target.py", "x=1")).status == "completed"
     command = popen.call_args.args[0]
     assert command[-2:] == ["--", "-target.py"]
+
+
+def test_scanner_skips_unsupported_extensions(monkeypatch: pytest.MonkeyPatch) -> None:
+    popen = Mock()
+    monkeypatch.setattr("app.pipeline.sast_scanner.subprocess.Popen", popen)
+    scanner = SastScanner(Settings(_env_file=None).semgrep_rules_path)
+    result = scanner.scan({"main.c": "int main() { return 0; }"}, added("main.c", "int main() {}"))
+    assert result.status == "completed" and not result.hints
+    popen.assert_not_called()

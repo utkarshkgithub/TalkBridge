@@ -2,12 +2,14 @@
 
 import json
 import os
+import re
+import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 import certifi
@@ -21,6 +23,33 @@ class ScanResult(Contract):
     hints: list[SastHint] = []
     status: Literal["completed", "timeout", "unavailable", "error"] = "completed"
     warnings: list[str] = []
+
+
+LANG_EXTENSIONS: dict[str, set[str]] = {
+    "python": {".py"},
+    "javascript": {".js", ".jsx", ".mjs", ".cjs"},
+    "typescript": {".ts", ".tsx"},
+    "java": {".java"},
+    "c": {".c", ".h"},
+    "cpp": {".cc", ".cpp", ".hpp"},
+}
+
+
+def _supported_extensions(rules_dir: Path) -> set[str] | None:
+    files = list(rules_dir.glob("*.yml")) + list(rules_dir.glob("*.yaml"))
+    if not files:
+        return None
+    exts: set[str] = set()
+    for path in files:
+        matches = re.findall(r"^\s*languages:\s*\[([^\]]+)\]", path.read_text(encoding="utf-8"), re.M)
+        if not matches:
+            return None
+        for group in matches:
+            for lang in (part.strip().lower() for part in group.split(",")):
+                if lang not in LANG_EXTENSIONS:
+                    return None
+                exts.update(LANG_EXTENSIONS[lang])
+    return exts
 
 
 class SastScanner:
@@ -38,6 +67,10 @@ class SastScanner:
             return ScanResult(
                 status="unavailable", warnings=["Local Semgrep rules directory is missing"]
             )
+        if (supported := _supported_extensions(self.rules)) is not None:
+            targets = [t for t in targets if PurePosixPath(t).suffix.lower() in supported]
+            if not targets:
+                return ScanResult()
         with tempfile.TemporaryDirectory(prefix="talkbridge-sast-") as directory:
             root = Path(directory)
             for path in targets:
@@ -54,8 +87,14 @@ class SastScanner:
                 "SEMGREP_LOG_FILE": str(root / ".semgrep.log"),
                 "SEMGREP_SETTINGS_FILE": str(root / ".semgrep-settings.yml"),
             }
+            venv_semgrep = Path(sys.executable).with_name("semgrep")
+            executable = (
+                str(venv_semgrep)
+                if venv_semgrep.exists()
+                else shutil.which("semgrep") or str(venv_semgrep)
+            )
             command = [
-                str(Path(sys.executable).with_name("semgrep")),
+                executable,
                 "scan",
                 "--json",
                 "--quiet",
