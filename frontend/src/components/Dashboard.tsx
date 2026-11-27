@@ -60,17 +60,19 @@ export function Dashboard({
   useEffect(() => {
     const controller = new AbortController();
     Promise.all([
-      api.reviews(controller.signal),
-      api.telemetry(controller.signal),
+      reviewId ? Promise.resolve(null) : api.reviews(controller.signal),
+      reviewId ? Promise.resolve(null) : api.telemetry(controller.signal),
       reviewId
         ? api.review(reviewId, controller.signal)
         : Promise.resolve(null),
     ])
       .then(([list, metrics, detail]) => {
         if (controller.signal.aborted) return;
-        setReviews(list.items);
-        setTotal(list.total);
-        setTelemetry(metrics);
+        if (list) {
+          setReviews(list.items);
+          setTotal(list.total);
+        }
+        if (metrics) setTelemetry(metrics);
         setSelected(detail);
         setError("");
       })

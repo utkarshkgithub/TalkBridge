@@ -151,3 +151,20 @@ it("does not present incomplete reviews as clean or perfect health", async () =>
     screen.queryByText("No high-confidence findings"),
   ).not.toBeInTheDocument();
 });
+
+it("fetches only the selected review on detail pages", async () => {
+  const fetch = vi.fn(async (_url: string) => ({
+    ok: true,
+    json: async () => review,
+  }));
+  vi.stubGlobal("fetch", fetch);
+  render(<Dashboard section="reviews" reviewId={review.id} />);
+  expect(
+    await screen.findByText("Add passwordless session login"),
+  ).toBeInTheDocument();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch).toHaveBeenCalledWith(
+    `/api/backend/reviews/${encodeURIComponent(review.id)}`,
+    expect.objectContaining({ method: "GET" }),
+  );
+});
