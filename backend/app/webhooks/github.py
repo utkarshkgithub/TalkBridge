@@ -65,7 +65,30 @@ async def github_webhook(request: Request) -> Any:
             raise ValueError("Expected object")
     except (ValueError, UnicodeDecodeError) as exc:
         raise HTTPException(400, "Invalid JSON payload") from exc
-    if request.headers.get("X-GitHub-Event") != "pull_request":
+    event = request.headers.get("X-GitHub-Event")
+    if event == "installation":
+        action = payload.get("action")
+        inst = payload.get("installation")
+        if (
+            isinstance(action, str)
+            and action in {"created", "deleted", "suspend", "unsuspend"}
+            and isinstance(inst, dict)
+            and isinstance(inst.get("id"), int)
+            and inst["id"] >= 1
+        ):
+            raw_acct = inst.get("account")
+            acct = raw_acct if isinstance(raw_acct, dict) else {}
+            store = getattr(request.app.state, "store", None)
+            if store is not None:
+                await store.upsert_installation_event(
+                    inst["id"],
+                    str(acct.get("login") or ""),
+                    str(acct.get("type") or "User"),
+                    action,
+                    daily_limit=settings.install_daily_limit,
+                )
+        return {"status": "installation_recorded", "delivery_id": delivery}
+    if event != "pull_request":
         return {"status": "ignored", "delivery_id": delivery}
     action = payload.get("action")
     if not isinstance(action, str):
@@ -94,10 +117,29 @@ async def github_webhook(request: Request) -> Any:
     cache = request.app.state.deliveries
     if not cache.claim(delivery):
         return {"status": "duplicate_ignored", "delivery_id": delivery}
+    store = getattr(request.app.state, "store", None)
+    quota_charged = False
+    if settings.multi_tenant_enabled:
+        if context.installation_id is None:
+            cache.release(delivery)
+            return {"status": "ignored", "delivery_id": delivery, "reason": "installation_unclaimed"}
+        if store is None:
+            cache.release(delivery)
+            raise HTTPException(503, "Storage is required in multi-tenant mode")
+        verdict = await store.claim_webhook_quota(context.installation_id)
+        if verdict == "unclaimed":
+            cache.release(delivery)
+            return {"status": "ignored", "delivery_id": delivery, "reason": "installation_unclaimed"}
+        if verdict == "quota_exceeded":
+            cache.release(delivery)
+            raise HTTPException(429, "Daily pull request review quota exceeded for this installation")
+        quota_charged = True
     try:
         request.app.state.worker.enqueue(context)
     except asyncio.QueueFull as exc:
         cache.release(delivery)
+        if quota_charged and store is not None and context.installation_id is not None:
+            await store.refund_webhook_quota(context.installation_id)
         raise HTTPException(503, "Worker queue full; retry later") from exc
     from fastapi.responses import JSONResponse
 

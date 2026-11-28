@@ -48,6 +48,7 @@ export function demoEnabled() {
 }
 function identityAllowed(id: string) {
   if (process.env.NODE_ENV !== "production") return true;
+  if (process.env.AUTH_OPEN_SIGNUP === "true") return true;
   return (process.env.AUTH_ALLOWED_IDENTITIES || "")
     .split(",")
     .map((value) => value.trim())

@@ -34,6 +34,21 @@ export async function db() {
           CREATE TABLE IF NOT EXISTS flows (state TEXT PRIMARY KEY, browser TEXT NOT NULL, provider TEXT NOT NULL, intent TEXT NOT NULL, user_id TEXT, verifier TEXT NOT NULL, expires BIGINT NOT NULL);
           CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS demo_attempts (email TEXT PRIMARY KEY, count INTEGER NOT NULL, "reset" BIGINT NOT NULL);
+          CREATE TABLE IF NOT EXISTS github_installations (
+            installation_id BIGINT PRIMARY KEY,
+            account_login TEXT NOT NULL DEFAULT '',
+            account_type TEXT NOT NULL DEFAULT 'User',
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'suspended', 'deleted')),
+            daily_limit INTEGER NOT NULL DEFAULT 20,
+            daily_count INTEGER NOT NULL DEFAULT 0,
+            usage_date DATE NOT NULL DEFAULT CURRENT_DATE,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+          );
+          CREATE TABLE IF NOT EXISTS user_installations (
+            user_id TEXT NOT NULL,
+            installation_id BIGINT NOT NULL REFERENCES github_installations(installation_id) ON DELETE CASCADE,
+            PRIMARY KEY (user_id, installation_id)
+          );
         `);
         activePool = pool;
         return pool;
@@ -124,4 +139,13 @@ export type Connection = {
   provider: string;
   account: string;
   expires: number | null;
+};
+
+export type GitHubInstallation = {
+  installation_id: number;
+  account_login: string;
+  account_type: string;
+  status: string;
+  daily_limit: number;
+  daily_count: number;
 };

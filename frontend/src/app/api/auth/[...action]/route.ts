@@ -16,6 +16,8 @@ import {
   isProvider,
   repositories,
   startOAuth,
+  syncGitHubInstallations,
+  unlinkInstallation,
 } from "@/lib/auth/oauth";
 import { query } from "@/lib/auth/store";
 
@@ -43,6 +45,30 @@ export async function GET(
       providers: availableProviders(),
       demoEnabled: demoEnabled(),
     });
+  if (action.length === 2 && action[0] === "github" && action[1] === "setup") {
+    if (!user)
+      return NextResponse.redirect(new URL("/login", appUrl()), 303);
+    const rawId = request.nextUrl.searchParams.get("installation_id");
+    const parsedId = rawId ? Number(rawId) : undefined;
+    const expectedId =
+      parsedId && Number.isInteger(parsedId) && parsedId > 0
+        ? parsedId
+        : undefined;
+    try {
+      await syncGitHubInstallations(user.id, expectedId);
+      return NextResponse.redirect(
+        new URL("/connections?installed=1", appUrl()),
+        303,
+      );
+    } catch (error) {
+      return fail(
+        error instanceof Error
+          ? error.message
+          : "Could not verify GitHub App installation.",
+        "/connections",
+      );
+    }
+  }
   const provider = action[1];
   if (!provider || !isProvider(provider))
     return result({ error: "Not found" }, 404);
@@ -136,6 +162,35 @@ export async function POST(
     });
     return NextResponse.redirect(new URL("/dashboard", origin), 303);
   }
+  if (action.length === 2 && action[0] === "installations") {
+    const user = await getUser();
+    if (!user) return result({ error: "Sign in required" }, 401);
+    if (action[1] === "sync") {
+      try {
+        return result({ items: await syncGitHubInstallations(user.id) });
+      } catch (error) {
+        return result(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Could not sync installations.",
+          },
+          400,
+        );
+      }
+    }
+    if (action[1] === "unlink") {
+      const body = (await request.json().catch(() => ({}))) as {
+        installation_id?: unknown;
+      };
+      const id = Number(body.installation_id);
+      if (!Number.isInteger(id) || id < 1)
+        return result({ error: "Invalid installation_id" }, 400);
+      return result({ items: await unlinkInstallation(user.id, id) });
+    }
+    return result({ error: "Not found" }, 404);
+  }
   const provider = action[1];
   if (!provider || !isProvider(provider) || action.length !== 2)
     return result({ error: "Not found" }, 404);
@@ -146,6 +201,15 @@ export async function POST(
       user.id,
       provider,
     ]);
+    if (provider === "github") {
+      await query("DELETE FROM user_installations WHERE user_id=$1", [user.id]);
+      await query(
+        `UPDATE github_installations
+         SET status = 'pending', updated_at = now()
+         WHERE status = 'active'
+           AND NOT EXISTS (SELECT 1 FROM user_installations WHERE installation_id = github_installations.installation_id)`,
+      );
+    }
     return result({ connections: await connections(user.id) });
   }
   if (action[0] !== "login" && action[0] !== "connect")

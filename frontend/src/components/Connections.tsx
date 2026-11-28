@@ -8,7 +8,7 @@ import {
   LuRefreshCw as RefreshCw,
 } from "react-icons/lu";
 import { PixelMark } from "./PixelMark";
-import { Button } from "./ui/button";
+import { Button, buttonVariants } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
 import { Badge } from "./ui/badge";
 import {
@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import type { Connection } from "@/lib/auth/store";
+import type { Connection, GitHubInstallation } from "@/lib/auth/store";
 const definitions = [
   {
     id: "github",
@@ -45,14 +45,21 @@ const definitions = [
 ];
 export function Connections({
   initial,
+  initialInstallations = [],
+  appSlug = "",
   providers,
   message,
 }: {
   initial: Connection[];
+  initialInstallations?: GitHubInstallation[];
+  appSlug?: string;
   providers: Record<string, boolean>;
   message?: string;
 }) {
   const [items, setItems] = useState(initial);
+  const [installations, setInstallations] =
+    useState<GitHubInstallation[]>(initialInstallations);
+  const [syncingInstalls, setSyncingInstalls] = useState(false);
   const [selected, setSelected] = useState(initial[0]?.provider || "github");
   const [repos, setRepos] = useState<
     { id: string; name: string; private: boolean }[]
@@ -97,12 +104,53 @@ export function Connections({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setItems(data.connections);
+      if (provider === "github") setInstallations([]);
       if (selected === provider) {
         setRepos([]);
         setLoading(false);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not disconnect.");
+    } finally {
+      setBusy("");
+    }
+  }
+  async function syncInstallations() {
+    setSyncingInstalls(true);
+    setError("");
+    try {
+      const response = await fetch("/api/auth/installations/sync", {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setInstallations(data.items);
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Could not sync GitHub App installations.",
+      );
+    } finally {
+      setSyncingInstalls(false);
+    }
+  }
+  async function unlinkInstall(installationId: number) {
+    setBusy(`install:${installationId}`);
+    setError("");
+    try {
+      const response = await fetch("/api/auth/installations/unlink", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ installation_id: installationId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setInstallations(data.items);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not unlink installation.",
+      );
     } finally {
       setBusy("");
     }
@@ -194,6 +242,67 @@ export function Connections({
             );
           })}
         </div>
+        <section className="repository-browser surface">
+          <div className="list-heading">
+            <h2>GitHub App installations</h2>
+            <div className="list-tools">
+              {appSlug && (
+                <a
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                  href={`https://github.com/apps/${encodeURIComponent(appSlug)}/installations/new`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Link2 size={14} /> Install GitHub App
+                </a>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={
+                  syncingInstalls || !items.some((i) => i.provider === "github")
+                }
+                onClick={syncInstallations}
+              >
+                <RefreshCw size={14} />{" "}
+                {syncingInstalls ? "Syncing..." : "Sync from GitHub"}
+              </Button>
+            </div>
+          </div>
+          {installations.length ? (
+            <div className="repo-list">
+              {installations.map((inst) => (
+                <div className="repository-item" key={inst.installation_id}>
+                  <SiGithub size={16} />
+                  <strong>{inst.account_login || `#${inst.installation_id}`}</strong>
+                  <Badge variant="outline">{inst.account_type}</Badge>
+                  <Badge variant="outline">{inst.status}</Badge>
+                  <Badge variant="outline">
+                    {inst.daily_count}/{inst.daily_limit} today
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy === `install:${inst.installation_id}`}
+                    onClick={() => unlinkInstall(inst.installation_id)}
+                  >
+                    Unlink
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <PixelMark mascot className="empty-mascot" />
+              <h3>No GitHub App installations linked</h3>
+              <p>
+                Connect GitHub above, install the GitHub App on your
+                repositories, and click Sync from GitHub to enable automated
+                PR reviews.
+              </p>
+            </div>
+          )}
+        </section>
         <section className="repository-browser surface">
           <div className="list-heading">
             <h2>Repositories</h2>

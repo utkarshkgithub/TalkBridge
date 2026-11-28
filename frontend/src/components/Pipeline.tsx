@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   LuBraces as Braces,
   LuGitPullRequest as GitPullRequest,
@@ -12,7 +11,6 @@ import {
 } from "react-icons/lu";
 import { PixelMark } from "./PixelMark";
 import { PageSkeleton } from "./PageSkeleton";
-import { DemoControls } from "./DemoControls";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import {
@@ -62,7 +60,6 @@ const stages = [
   },
 ];
 export function Pipeline() {
-  const router = useRouter();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [id, setId] = useState("");
   const [error, setError] = useState("");
@@ -227,12 +224,9 @@ export function Pipeline() {
           <div className="empty-state">
             <PixelMark mascot className="empty-mascot" />
             <h3>No pipeline runs yet</h3>
-            <p>Replay a sample review to inspect recorded stage timings.</p>
+            <p>Open a pull request on an installed repository to inspect stage timings.</p>
           </div>
         )}
-        <DemoControls
-          onReview={(review) => router.push(`/reviews/${review.id}`)}
-        />
       </main>
     </>
   );

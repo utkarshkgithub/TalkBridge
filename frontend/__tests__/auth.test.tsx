@@ -33,6 +33,7 @@ let auth: typeof import("@/lib/auth/session");
 let store: typeof import("@/lib/auth/store");
 let oauth: typeof import("@/lib/auth/oauth");
 let routes: typeof import("@/app/api/auth/[...action]/route");
+let backendProxy: typeof import("@/app/api/backend/[...path]/route");
 
 const baseDatabaseUrl = (
   process.env.TEST_DATABASE_URL ||
@@ -54,13 +55,14 @@ beforeAll(async () => {
   store = await import("@/lib/auth/store");
   oauth = await import("@/lib/auth/oauth");
   routes = await import("@/app/api/auth/[...action]/route");
+  backendProxy = await import("@/app/api/backend/[...path]/route");
   await store.db();
 });
 
 beforeEach(async () => {
   jar.clear();
   await store.query(
-    "DELETE FROM sessions; DELETE FROM connections; DELETE FROM flows; DELETE FROM demo_attempts; DELETE FROM users;",
+    "DELETE FROM user_installations; DELETE FROM github_installations; DELETE FROM sessions; DELETE FROM connections; DELETE FROM flows; DELETE FROM demo_attempts; DELETE FROM users;",
   );
   vi.stubEnv("NODE_ENV", "test");
   vi.stubEnv("DEMO_AUTH_ENABLED", "true");
@@ -177,7 +179,7 @@ describe("authentication boundaries", () => {
     await expect(oauth.finishOAuth("github", state, "code")).rejects.toThrow(
       "expired",
     );
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(3);
     const expired = new URL(await oauth.startOAuth("github", "login"));
     await store.query("UPDATE flows SET expires=0");
     await expect(
@@ -355,5 +357,110 @@ describe("authentication boundaries", () => {
       oauth.repositories("gl-user", "gitlab"),
     ]);
     expect(tokenCalls).toBe(1);
+  });
+
+  it("allows open signup in production only when AUTH_OPEN_SIGNUP=true", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_ALLOWED_IDENTITIES", "");
+    vi.stubEnv("AUTH_OPEN_SIGNUP", "true");
+    await auth.createSession({
+      id: "github:external-1",
+      name: "External User",
+      email: "ext@example.com",
+      provider: "github",
+    });
+    expect((await auth.getUser())?.id).toBe("github:external-1");
+  });
+
+  it("verifies GitHub App installations via /user/installations and rejects spoofed IDs", async () => {
+    await auth.createSession({
+      id: "google:u1",
+      name: "Google User",
+      email: "u1@example.com",
+      provider: "google",
+    });
+    await store.query("INSERT INTO connections VALUES ($1,$2,$3,$4,$5)", [
+      "google:u1",
+      "github",
+      "u1-gh",
+      await store.encrypt(JSON.stringify({ access_token: "ghu_valid" })),
+      null,
+    ]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          installations: [
+            { id: 777, account: { login: "u1-gh", type: "User" }, suspended_at: null },
+          ],
+        }),
+      })),
+    );
+    const spoofed = await routes.GET(
+      new NextRequest("http://127.0.0.1:3000/api/auth/github/setup?installation_id=99999"),
+      params("github", "setup"),
+    );
+    expect(spoofed.status).toBe(303);
+    expect(spoofed.headers.get("location")).toContain("does%20not%20belong");
+
+    const valid = await routes.GET(
+      new NextRequest("http://127.0.0.1:3000/api/auth/github/setup?installation_id=777"),
+      params("github", "setup"),
+    );
+    expect(valid.status).toBe(303);
+    expect(valid.headers.get("location")).toBe("http://127.0.0.1:3000/connections?installed=1");
+    expect((await oauth.listInstallations("google:u1")).map((i) => i.installation_id)).toEqual([777]);
+
+    const unlink = await routes.POST(
+      new NextRequest("http://127.0.0.1:3000/api/auth/installations/unlink", {
+        method: "POST",
+        headers: { origin: auth.appUrl(), "Content-Type": "application/json" },
+        body: JSON.stringify({ installation_id: 777 }),
+      }),
+      params("installations", "unlink"),
+    );
+    expect(unlink.status).toBe(200);
+    expect(await oauth.listInstallations("google:u1")).toEqual([]);
+    const row = (
+      await store.query<{ status: string }>(
+        "SELECT status FROM github_installations WHERE installation_id=777",
+      )
+    ).rows[0];
+    expect(row.status).toBe("pending");
+  });
+
+  it("forwards X-TalkBridge-User from the backend proxy and blocks deleted demo routes", async () => {
+    await auth.createSession({
+      id: "github:42",
+      name: "Dev",
+      email: "dev@example.com",
+      provider: "github",
+    });
+    vi.stubEnv("DASHBOARD_API_KEY", "proxy-secret-key-32-chars-minimum");
+    vi.stubEnv("BACKEND_URL", "http://127.0.0.1:8000");
+    let seenHeaders: Record<string, string> = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        seenHeaders = (init?.headers || {}) as Record<string, string>;
+        return new Response(JSON.stringify({ items: [], total: 0, limit: 50, offset: 0 }), {
+          status: 200,
+        });
+      }),
+    );
+    const res = await backendProxy.GET(
+      new NextRequest("http://127.0.0.1:3000/api/backend/reviews"),
+      { params: Promise.resolve({ path: ["reviews"] }) },
+    );
+    expect(res.status).toBe(200);
+    expect(seenHeaders["X-TalkBridge-User"]).toBe("github:42");
+    expect(seenHeaders["X-TalkBridge-Key"]).toBe("proxy-secret-key-32-chars-minimum");
+
+    const blocked = await backendProxy.GET(
+      new NextRequest("http://127.0.0.1:3000/api/backend/demo/replay/auth_sqli_pr"),
+      { params: Promise.resolve({ path: ["demo", "replay", "auth_sqli_pr"] }) },
+    );
+    expect(blocked.status).toBe(404);
   });
 });

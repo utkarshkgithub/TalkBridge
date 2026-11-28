@@ -100,9 +100,16 @@ def create_app(settings: Settings | None = None, worker: ReviewWorker | None = N
     @app.middleware("http")
     async def protect_dashboard(request: Request, call_next: RequestResponseEndpoint) -> Response:
         key = settings.dashboard_api_key.get_secret_value()
-        if request.url.path.startswith("/api/") and key:
-            if not hmac.compare_digest(request.headers.get("X-TalkBridge-Key", "").encode(), key.encode()):
+        if request.url.path.startswith("/api/"):
+            if key and not hmac.compare_digest(
+                request.headers.get("X-TalkBridge-Key", "").encode(), key.encode()
+            ):
                 return JSONResponse({"detail": "Authentication required"}, status_code=401)
+            if (
+                settings.multi_tenant_enabled
+                and not (request.headers.get("X-TalkBridge-User") or "").strip()
+            ):
+                return JSONResponse({"detail": "User identity required"}, status_code=401)
         return await call_next(request)
 
     app.include_router(router)

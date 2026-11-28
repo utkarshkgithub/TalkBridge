@@ -27,8 +27,6 @@ export const api = {
     request<Review>(`/reviews/${encodeURIComponent(id)}`, "GET", signal),
   telemetry: (signal?: AbortSignal) =>
     request<Telemetry>("/telemetry/summary", "GET", signal),
-  replay: (id: string) => request<Review>(`/demo/replay/${id}`, "POST"),
-  live: (id: string) => request<Review>(`/reviews/run/${id}`, "POST"),
 };
 export function visibleFindings(review: Review, threshold: number) {
   return review.result.findings.filter(

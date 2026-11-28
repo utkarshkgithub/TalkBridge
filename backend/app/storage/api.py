@@ -26,16 +26,32 @@ def store_for(request: Request) -> ReviewStore:
     return store
 
 
+def tenant_user(request: Request) -> str | None:
+    if not request.app.state.settings.multi_tenant_enabled:
+        return None
+    user = (request.headers.get("X-TalkBridge-User") or "").strip()
+    return user or None
+
+
 @router.get("/reviews", response_model=ReviewList)
 async def list_reviews(
     request: Request, limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)
 ) -> ReviewList:
-    return await store_for(request).list(limit, offset)
+    return await store_for(request).list(
+        limit,
+        offset,
+        tenant_user_id=tenant_user(request),
+        include_replay=request.app.state.settings.demo_replay_mode,
+    )
 
 
 @router.get("/reviews/{identity}", response_model=StoredReview)
 async def get_review(identity: str, request: Request) -> StoredReview:
-    result = await store_for(request).get(identity)
+    result = await store_for(request).get(
+        identity,
+        tenant_user_id=tenant_user(request),
+        include_replay=request.app.state.settings.demo_replay_mode,
+    )
     if result is None:
         raise HTTPException(404, "Review not found")
     return result
@@ -43,18 +59,25 @@ async def get_review(identity: str, request: Request) -> StoredReview:
 
 @router.post("/demo/replay/{identity}", response_model=StoredReview)
 async def replay_review(identity: str, request: Request) -> StoredReview:
+    settings = request.app.state.settings
+    if settings.multi_tenant_enabled and settings.app_env == "prod":
+        raise HTTPException(403, "Demo endpoints are disabled in multi-tenant production")
     store = store_for(request)
     try:
         fixture = load_fixture(identity)
     except KeyError as exc:
         raise HTTPException(404, "Replay fixture not found") from exc
-    return await store.save(fixture.result, "replay", f"demo-{identity}")
+    return await store.save(
+        fixture.result, "replay", f"demo-{identity}", owner_user_id=tenant_user(request)
+    )
 
 
 @router.post("/reviews/run/{identity}", response_model=StoredReview)
 async def run_live_review(identity: str, request: Request) -> StoredReview:
-    store = store_for(request)
     settings = request.app.state.settings
+    if settings.multi_tenant_enabled and settings.app_env == "prod":
+        raise HTTPException(403, "Demo endpoints are disabled in multi-tenant production")
+    store = store_for(request)
     if settings.demo_replay_mode or not settings.review_enabled:
         raise HTTPException(
             409, "Live reviews are disabled. Enable reviews and disable replay mode."
@@ -77,14 +100,17 @@ async def run_live_review(identity: str, request: Request) -> StoredReview:
             result = await ReviewOrchestrator(Stage0(settings), VLLMClient(settings, client)).run(
                 fixture.source
             )
-            return await store.save(result, "base_8b")
+            return await store.save(result, "base_8b", owner_user_id=tenant_user(request))
     except TimeoutError as exc:
         raise HTTPException(504, "Live review timed out. Reduce review context or retry.") from exc
 
 
 @router.get("/telemetry/summary", response_model=TelemetrySummary)
 async def telemetry_summary(request: Request) -> TelemetrySummary:
-    rows = await store_for(request).summary_rows()
+    rows = await store_for(request).summary_rows(
+        tenant_user_id=tenant_user(request),
+        include_replay=request.app.state.settings.demo_replay_mode,
+    )
     findings = [f for row in rows for f in (row.get("findings") or ())]
     telemetries = [ReviewTelemetry.model_validate(row.get("telemetry") or {}) for row in rows]
     candidates = len(findings)

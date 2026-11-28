@@ -72,7 +72,7 @@ test("offline replay, keyboard confidence, patches and responsive navigation", a
     animations: "disabled",
   });
   await page
-    .getByRole("button", { name: "Replay review", exact: true })
+    .getByRole("link", { name: /Add passwordless session login/ })
     .click();
   await expect(
     page.getByRole("heading", { name: "Add passwordless session login" }),

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   LuArrowLeft as ArrowLeft,
   LuCircleCheck as CheckCircle2,
@@ -28,7 +27,6 @@ import type { Review, Telemetry } from "@/lib/types";
 import { api, isPartialReview } from "@/lib/api";
 import { RepoHealthCard } from "./RepoHealthCard";
 import { TelemetryCharts } from "./TelemetryCharts";
-import { DemoControls } from "./DemoControls";
 import { PrDiffViewer } from "./PrDiffViewer";
 import { PixelMark } from "./PixelMark";
 
@@ -40,7 +38,6 @@ export function Dashboard({
   section?: Section;
   reviewId?: string;
 }) {
-  const router = useRouter();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [total, setTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -176,9 +173,6 @@ export function Dashboard({
             <RepoHealthCard reviews={reviews} telemetry={telemetry} />
             {section !== "insights" && (
               <>
-                <DemoControls
-                  onReview={(review) => router.push(`/reviews/${review.id}`)}
-                />
                 <section className="review-list surface">
                   <div className="list-heading">
                     <h2>

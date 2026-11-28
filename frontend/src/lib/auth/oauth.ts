@@ -1,6 +1,13 @@
 import { randomBytes, createHash } from "node:crypto";
 import { cookies } from "next/headers";
-import { decrypt, encrypt, hash, query, type Connection } from "./store";
+import {
+  decrypt,
+  encrypt,
+  hash,
+  query,
+  type Connection,
+  type GitHubInstallation,
+} from "./store";
 import { appUrl, cookieOptions, createSession, getUser } from "./session";
 
 export const providers = ["github", "google", "gitlab", "bitbucket"] as const;
@@ -189,21 +196,35 @@ export async function finishOAuth(
       profile.username ||
       "Contributor",
   ).slice(0, 200);
-  if (flow.intent === "login") {
-    await createSession({
-      id: `${provider}:${identity}`,
-      name,
-      email: typeof profile.email === "string" ? profile.email : "",
-      provider,
-    });
-    return "/dashboard";
-  }
   const account = String(
     profile.login || profile.username || profile.display_name || name,
   ).slice(0, 200);
   const expires = token.expires_in
     ? Date.now() + token.expires_in * 1000
     : null;
+  if (flow.intent === "login") {
+    const userId = `${provider}:${identity}`;
+    await createSession({
+      id: userId,
+      name,
+      email: typeof profile.email === "string" ? profile.email : "",
+      provider,
+    });
+    if (provider === "github") {
+      await query(
+        "INSERT INTO connections (user_id, provider, account, credentials, expires) VALUES ($1,$2,$3,$4,$5) ON CONFLICT(user_id,provider) DO UPDATE SET account=excluded.account,credentials=excluded.credentials,expires=excluded.expires",
+        [
+          userId,
+          provider,
+          account,
+          await encrypt(JSON.stringify(token)),
+          expires,
+        ],
+      );
+      await syncGitHubInstallations(userId).catch(() => []);
+    }
+    return "/dashboard";
+  }
   await query(
     "INSERT INTO connections (user_id, provider, account, credentials, expires) VALUES ($1,$2,$3,$4,$5) ON CONFLICT(user_id,provider) DO UPDATE SET account=excluded.account,credentials=excluded.credentials,expires=excluded.expires",
     [
@@ -214,6 +235,8 @@ export async function finishOAuth(
       expires,
     ],
   );
+  if (provider === "github")
+    await syncGitHubInstallations(current!.id).catch(() => []);
   return "/connections?connected=" + provider;
 }
 export async function connections(userId: string): Promise<Connection[]> {
@@ -276,8 +299,7 @@ async function refreshConnectionToken(
   return task;
 }
 
-export async function repositories(userId: string, provider: Provider) {
-  if (provider === "google") throw new Error("Choose a repository provider.");
+async function validConnectionToken(userId: string, provider: Provider) {
   const connection = (
     await query<{ credentials: string; expires: string | number | null }>(
       "SELECT credentials,expires FROM connections WHERE user_id=$1 AND provider=$2",
@@ -295,6 +317,133 @@ export async function repositories(userId: string, provider: Provider) {
       );
     token = await refreshConnectionToken(userId, provider, token);
   }
+  return token;
+}
+
+export async function listInstallations(
+  userId: string,
+): Promise<GitHubInstallation[]> {
+  const { rows } = await query<{
+    installation_id: string | number;
+    account_login: string;
+    account_type: string;
+    status: string;
+    daily_limit: number;
+    daily_count: number;
+  }>(
+    `SELECT g.installation_id, g.account_login, g.account_type, g.status,
+            g.daily_limit,
+            CASE WHEN g.usage_date = CURRENT_DATE THEN g.daily_count ELSE 0 END AS daily_count
+     FROM github_installations g
+     JOIN user_installations u ON u.installation_id = g.installation_id
+     WHERE u.user_id = $1 AND g.status <> 'deleted'
+     ORDER BY g.account_login, g.installation_id`,
+    [userId],
+  );
+  return rows.map((row) => ({
+    installation_id: Number(row.installation_id),
+    account_login: row.account_login,
+    account_type: row.account_type,
+    status: row.status,
+    daily_limit: row.daily_limit,
+    daily_count: row.daily_count,
+  }));
+}
+
+export async function syncGitHubInstallations(
+  userId: string,
+  expectedInstallationId?: number,
+): Promise<GitHubInstallation[]> {
+  const token = await validConnectionToken(userId, "github");
+  const response = await fetch(
+    "https://api.github.com/user/installations?per_page=100",
+    {
+      headers: {
+        Authorization: `Bearer ${token.access_token}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000),
+    },
+  );
+  if (!response.ok)
+    throw new Error(
+      "Could not verify GitHub App installations. Connect GitHub using your GitHub App credentials.",
+    );
+  const data = (await response.json()) as {
+    installations?: Array<{
+      id: number;
+      account?: { login?: string; type?: string };
+      suspended_at?: string | null;
+    }>;
+  };
+  const items = Array.isArray(data.installations) ? data.installations : [];
+  const dailyLimit = Math.max(
+    1,
+    Number(process.env.INSTALL_DAILY_LIMIT || 20) || 20,
+  );
+  const syncedIds: number[] = [];
+  for (const item of items) {
+    if (typeof item.id !== "number" || item.id < 1) continue;
+    const status = item.suspended_at ? "suspended" : "active";
+    const login = String(item.account?.login || "");
+    const accountType = String(item.account?.type || "User");
+    await query(
+      `INSERT INTO github_installations (installation_id, account_login, account_type, status, daily_limit)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (installation_id) DO UPDATE
+       SET account_login = EXCLUDED.account_login,
+           account_type = EXCLUDED.account_type,
+           status = CASE
+             WHEN github_installations.status = 'deleted' THEN EXCLUDED.status
+             WHEN EXCLUDED.status = 'suspended' THEN 'suspended'
+             ELSE 'active'
+           END,
+           updated_at = now()`,
+      [item.id, login, accountType, status, dailyLimit],
+    );
+    syncedIds.push(item.id);
+  }
+  await query("DELETE FROM user_installations WHERE user_id=$1", [userId]);
+  for (const id of syncedIds) {
+    await query(
+      "INSERT INTO user_installations (user_id, installation_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+      [userId, id],
+    );
+  }
+  if (
+    expectedInstallationId !== undefined &&
+    !syncedIds.includes(expectedInstallationId)
+  )
+    throw new Error(
+      "This GitHub installation does not belong to your connected GitHub account.",
+    );
+  return listInstallations(userId);
+}
+
+export async function unlinkInstallation(
+  userId: string,
+  installationId: number,
+) {
+  await query(
+    "DELETE FROM user_installations WHERE user_id=$1 AND installation_id=$2",
+    [userId, installationId],
+  );
+  await query(
+    `UPDATE github_installations
+     SET status = 'pending', updated_at = now()
+     WHERE installation_id = $1
+       AND status = 'active'
+       AND NOT EXISTS (SELECT 1 FROM user_installations WHERE installation_id = $1)`,
+    [installationId],
+  );
+  return listInstallations(userId);
+}
+
+export async function repositories(userId: string, provider: Provider) {
+  if (provider === "google") throw new Error("Choose a repository provider.");
+  const token = await validConnectionToken(userId, provider);
   const url =
     provider === "github"
       ? "https://api.github.com/user/repos?per_page=30&sort=updated"

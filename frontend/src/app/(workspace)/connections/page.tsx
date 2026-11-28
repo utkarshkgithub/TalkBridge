@@ -1,7 +1,11 @@
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { requireUser } from "@/lib/auth/session";
-import { availableProviders, connections } from "@/lib/auth/oauth";
+import {
+  availableProviders,
+  connections,
+  listInstallations,
+} from "@/lib/auth/oauth";
 import { Connections } from "@/components/Connections";
 export default function Page(props: PageProps<"/connections">) {
   return (
@@ -16,13 +20,17 @@ async function Content({ searchParams }: PageProps<"/connections">) {
   const message =
     typeof query.error === "string"
       ? query.error.slice(0, 300)
-      : typeof query.connected === "string" &&
-          ["github", "gitlab", "bitbucket"].includes(query.connected)
-        ? `${query.connected} connected successfully.`
-        : undefined;
+      : query.installed === "1"
+        ? "GitHub App installation verified and linked."
+        : typeof query.connected === "string" &&
+            ["github", "gitlab", "bitbucket"].includes(query.connected)
+          ? `${query.connected} connected successfully.`
+          : undefined;
   return (
     <Connections
       initial={await connections(user.id)}
+      initialInstallations={await listInstallations(user.id)}
+      appSlug={process.env.GITHUB_APP_SLUG || ""}
       providers={availableProviders()}
       message={message}
     />
