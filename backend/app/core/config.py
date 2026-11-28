@@ -29,11 +29,7 @@ class Settings(BaseSettings):
     worker_queue_size: int = Field(default=100, ge=1)
     worker_count: int = Field(default=1, ge=1, le=4)
     semgrep_timeout_seconds: float = Field(default=5.0, gt=0, le=5)
-    semgrep_rules_path: Path = (
-        Path(__file__).resolve().parents[3] / "semgrep_rules"
-        if (Path(__file__).resolve().parents[3] / "semgrep_rules").is_dir()
-        else Path(__file__).resolve().parents[1] / "semgrep_rules"
-    )
+    semgrep_rules_path: Path = Path(__file__).resolve().parents[1] / "semgrep_rules"
     ast_max_lines: int = Field(default=200, ge=31)
     enforce_style_diff: bool = False
     lora_enabled: bool = False
