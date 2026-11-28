@@ -5126,3 +5126,172 @@ kbd {
   width: 24px;
   height: 24px;
 }
+
+.add-project {
+  padding: 20px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.add-project-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.add-project-intro {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 240px;
+}
+.add-project-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-secondary);
+  color: var(--ink-secondary);
+}
+.add-project-intro h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.add-project-intro p {
+  font-size: 13px;
+  color: var(--ink-secondary);
+  margin-top: 2px;
+  line-height: 1.5;
+}
+.add-project-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.add-project-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.add-project-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-secondary);
+  min-width: 0;
+}
+.add-project-steps li.current {
+  border-color: var(--accent-border);
+  background: var(--accent-surface);
+}
+.add-project-steps li.done .step-dot {
+  border-color: var(--accent-border);
+  color: var(--link);
+}
+.step-dot {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+}
+.add-project-steps strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+}
+.add-project-steps span {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-secondary);
+}
+.add-project-skeletons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.project-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-secondary);
+  min-width: 0;
+  text-decoration: none;
+  transition: border-color 0.15s ease;
+}
+.project-chip:hover {
+  border-color: var(--ink-secondary);
+}
+.project-chip > svg:first-child {
+  flex-shrink: 0;
+  color: var(--ink-secondary);
+}
+.project-chip strong {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.project-chip-link {
+  flex-shrink: 0;
+  color: var(--ink-secondary);
+}
+.add-project-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--divider);
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+.install-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.install-meta-row a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--link);
+  text-decoration: none;
+}
+.install-meta-row a:hover {
+  text-decoration: underline;
+}
+@media (max-width: 720px) {
+  .add-project-steps,
+  .add-project-skeletons {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

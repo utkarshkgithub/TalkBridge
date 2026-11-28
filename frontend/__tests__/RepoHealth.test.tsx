@@ -177,3 +177,74 @@ it("renders a full-width trend baseline for a single review", () => {
   const polyline = container.querySelector("polyline");
   expect(polyline?.getAttribute("points")).toMatch(/^20,.* 580,/);
 });
+
+it("renders Add project only in overview and syncs installed repositories", async () => {
+  const addProject = {
+    githubConnected: true,
+    githubEnabled: true,
+    appSlug: "triagelenspr",
+    installations: [
+      {
+        installation_id: 777,
+        account_login: "alice",
+        account_type: "User",
+        status: "active",
+        daily_limit: 20,
+        daily_count: 1,
+      },
+    ],
+  };
+  const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes("/api/auth/repositories/github")) {
+      return {
+        ok: true,
+        json: async () => ({
+          items: [{ id: "1", name: "alice/app", private: true }],
+        }),
+      };
+    }
+    if (url === "/api/auth/installations/sync" && init?.method === "POST") {
+      return {
+        ok: true,
+        json: async () => ({ items: addProject.installations }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () =>
+        url.includes("telemetry")
+          ? telemetry
+          : { items: [], total: 0, limit: 100, offset: 0 },
+    };
+  });
+  vi.stubGlobal("fetch", fetch);
+
+  const { unmount } = render(
+    <Dashboard section="overview" addProject={addProject} />,
+  );
+  expect(
+    await screen.findByRole("heading", { name: "Add project" }),
+  ).toBeInTheDocument();
+  expect(await screen.findByText("alice/app")).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: /Add repository/i }),
+  ).toHaveAttribute(
+    "href",
+    "https://github.com/apps/triagelenspr/installations/new",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Sync" }));
+  await waitFor(() =>
+    expect(fetch).toHaveBeenCalledWith("/api/auth/installations/sync", {
+      method: "POST",
+    }),
+  );
+  unmount();
+
+  render(<Dashboard section="reviews" addProject={addProject} />);
+  expect(
+    await screen.findByRole("heading", { name: "All reviews" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Add project" }),
+  ).not.toBeInTheDocument();
+});

@@ -24,9 +24,9 @@ const definitions = [
     id: "github",
     name: "GitHub",
     description:
-      "Connect your GitHub account to browse public and private repositories.",
+      "Connect your GitHub account to link your GitHub App installations.",
     permissions:
-      "Profile and repository access. Automated PR reviews use your separately configured GitHub App.",
+      "Profile access and verification for repositories where the TalkBridge GitHub App is installed.",
   },
   {
     id: "gitlab",
@@ -125,6 +125,11 @@ export function Connections({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setInstallations(data.items);
+      if (selected === "github") {
+        setLoading(true);
+        setRepos([]);
+        setRevision((n) => n + 1);
+      }
     } catch (e) {
       setError(
         e instanceof Error
@@ -147,6 +152,11 @@ export function Connections({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setInstallations(data.items);
+      if (selected === "github") {
+        setLoading(true);
+        setRepos([]);
+        setRevision((n) => n + 1);
+      }
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Could not unlink installation.",
@@ -253,7 +263,7 @@ export function Connections({
                   target="_blank"
                   rel="noreferrer"
                 >
-                  <Link2 size={14} /> Install GitHub App
+                  <Link2 size={14} /> Install on repositories
                 </a>
               )}
               <Button
@@ -280,6 +290,18 @@ export function Connections({
                   <Badge variant="outline">
                     {inst.daily_count}/{inst.daily_limit} today
                   </Badge>
+                  <a
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
+                    href={
+                      inst.account_type === "Organization" && inst.account_login
+                        ? `https://github.com/organizations/${encodeURIComponent(inst.account_login)}/settings/installations/${inst.installation_id}`
+                        : `https://github.com/settings/installations/${inst.installation_id}`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Select repos
+                  </a>
                   <Button
                     variant="outline"
                     size="sm"
@@ -379,8 +401,9 @@ export function Connections({
                 ))}
               </div>
               <p className="repository-note">
-                Showing up to 30 recently updated repositories. Connecting an
-                account does not install webhooks or enable automated reviews.
+                {selected === "github"
+                  ? "Showing only repositories enabled in your linked GitHub App installations."
+                  : "Showing up to 30 recently updated repositories. Connecting an account does not install webhooks or enable automated reviews."}
               </p>
             </>
           ) : (
@@ -389,12 +412,18 @@ export function Connections({
               <h3>
                 {error
                   ? "Repositories could not be loaded"
-                  : "No accessible repositories"}
+                  : selected === "github" &&
+                      !installations.some((i) => i.status === "active")
+                    ? "No repositories enabled for review yet"
+                    : "No accessible repositories"}
               </h3>
               <p>
                 {error
                   ? "Retry or reconnect your provider account."
-                  : "Check the permissions granted to TalkBridge in your provider settings."}
+                  : selected === "github" &&
+                      !installations.some((i) => i.status === "active")
+                    ? "Install the GitHub App on your chosen repositories above, then click Sync from GitHub."
+                    : "Check the permissions granted to TalkBridge in your provider settings."}
               </p>
             </div>
           )}

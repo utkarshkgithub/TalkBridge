@@ -30,7 +30,7 @@ async function Content({ searchParams }: PageProps<"/connections">) {
     <Connections
       initial={await connections(user.id)}
       initialInstallations={await listInstallations(user.id)}
-      appSlug={process.env.GITHUB_APP_SLUG || ""}
+      appSlug={process.env.GITHUB_APP_SLUG || "triagelenspr"}
       providers={availableProviders()}
       message={message}
     />

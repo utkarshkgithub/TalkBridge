@@ -412,6 +412,34 @@ describe("authentication boundaries", () => {
     expect(valid.headers.get("location")).toBe("http://127.0.0.1:3000/connections?installed=1");
     expect((await oauth.listInstallations("google:u1")).map((i) => i.installation_id)).toEqual([777]);
 
+    const repoFetch = vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => ({
+        repositories: url.includes("/user/installations/777/repositories")
+          ? [{ id: 10, full_name: "u1-gh/selected-app", private: true }]
+          : [{ id: 99, full_name: "u1-gh/public-noise", private: false }],
+      }),
+    }));
+    vi.stubGlobal("fetch", repoFetch);
+    expect(await oauth.repositories("google:u1", "github")).toEqual([
+      { id: "10", name: "u1-gh/selected-app", private: true },
+    ]);
+    expect(repoFetch).toHaveBeenCalledWith(
+      "https://api.github.com/user/installations/777/repositories?per_page=100",
+      expect.any(Object),
+    );
+
+    const updateRedirect = await routes.GET(
+      new NextRequest(
+        "http://127.0.0.1:3000/api/auth/callback/github?installation_id=777&setup_action=update",
+      ),
+      params("callback", "github"),
+    );
+    expect(updateRedirect.status).toBe(303);
+    expect(updateRedirect.headers.get("location")).toBe(
+      "http://127.0.0.1:3000/api/auth/github/setup?installation_id=777",
+    );
+
     const unlink = await routes.POST(
       new NextRequest("http://127.0.0.1:3000/api/auth/installations/unlink", {
         method: "POST",

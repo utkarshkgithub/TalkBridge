@@ -74,11 +74,24 @@ export async function GET(
     return result({ error: "Not found" }, 404);
   try {
     if (action.length === 2 && action[0] === "callback") {
-      const path = await finishOAuth(
-        provider,
-        request.nextUrl.searchParams.get("state") || "",
-        request.nextUrl.searchParams.get("code") || "",
-      );
+      const state = request.nextUrl.searchParams.get("state") || "";
+      const code = request.nextUrl.searchParams.get("code") || "";
+      const installationId = request.nextUrl.searchParams.get("installation_id");
+      const setupAction = request.nextUrl.searchParams.get("setup_action");
+      if (
+        provider === "github" &&
+        !state &&
+        user &&
+        installationId &&
+        (setupAction === "install" || setupAction === "update")
+      ) {
+        const parsed = Number(installationId);
+        const setupTarget = new URL("/api/auth/github/setup", appUrl());
+        if (Number.isInteger(parsed) && parsed > 0)
+          setupTarget.searchParams.set("installation_id", String(parsed));
+        return NextResponse.redirect(setupTarget, 303);
+      }
+      const path = await finishOAuth(provider, state, code);
       return NextResponse.redirect(new URL(path, appUrl()), 303);
     }
     if (!user) return result({ error: "Sign in required" }, 401);

@@ -34,7 +34,7 @@ describe("repository connections", () => {
       screen.getByRole("status", { name: "Loading repositories" }),
     ).toBeInTheDocument();
     resolve({ ok: true, json: async () => ({ items: [] }) });
-    await screen.findByText("No accessible repositories");
+    await screen.findByText("No repositories enabled for review yet");
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
@@ -58,7 +58,7 @@ describe("repository connections", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Refresh repositories" }),
     );
-    await screen.findByText("No accessible repositories");
+    await screen.findByText("No repositories enabled for review yet");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^Disconnect$/ }));
     await screen.findByText("No repositories connected");

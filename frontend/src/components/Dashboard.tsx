@@ -29,14 +29,17 @@ import { RepoHealthCard } from "./RepoHealthCard";
 import { TelemetryCharts } from "./TelemetryCharts";
 import { PrDiffViewer } from "./PrDiffViewer";
 import { PixelMark } from "./PixelMark";
+import { AddProject, type AddProjectConfig } from "./AddProject";
 
 type Section = "overview" | "reviews" | "insights";
 export function Dashboard({
   section = "overview",
   reviewId,
+  addProject,
 }: {
   section?: Section;
   reviewId?: string;
+  addProject?: AddProjectConfig;
 }) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [total, setTotal] = useState(0);
@@ -167,10 +170,13 @@ export function Dashboard({
               </div>
               <span className="workspace-badge">
                 <Shield size={14} />
-                Local workspace
+                Protected workspace
               </span>
             </div>
             <RepoHealthCard reviews={reviews} telemetry={telemetry} />
+            {section === "overview" && addProject && (
+              <AddProject {...addProject} />
+            )}
             {section !== "insights" && (
               <>
                 <section className="review-list surface">
@@ -335,7 +341,7 @@ export function Dashboard({
                         <p>
                           {reviews.length
                             ? "Try a different search or filter."
-                            : "Replay a sample above, or connect your live review pipeline."}
+                            : "Add a GitHub repository above and open a pull request to see reviews here."}
                         </p>
                       </div>
                     )}

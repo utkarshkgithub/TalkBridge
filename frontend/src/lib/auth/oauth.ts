@@ -444,12 +444,52 @@ export async function unlinkInstallation(
 export async function repositories(userId: string, provider: Provider) {
   if (provider === "google") throw new Error("Choose a repository provider.");
   const token = await validConnectionToken(userId, provider);
+  if (provider === "github") {
+    const installs = await listInstallations(userId);
+    const activeInstalls = installs.filter((i) => i.status === "active");
+    const seen = new Map<
+      string,
+      { id: string; name: string; private: boolean }
+    >();
+    for (const inst of activeInstalls) {
+      const response = await fetch(
+        `https://api.github.com/user/installations/${inst.installation_id}/repositories?per_page=100`,
+        {
+          headers: {
+            Authorization: `Bearer ${token.access_token}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+          cache: "no-store",
+          signal: AbortSignal.timeout(15000),
+        },
+      );
+      if (!response.ok)
+        throw new Error(
+          "Could not load installed repositories. Sync GitHub or reconnect your account.",
+        );
+      const data = (await response.json()) as {
+        repositories?: Array<Record<string, unknown>>;
+      };
+      for (const repo of Array.isArray(data.repositories)
+        ? data.repositories
+        : []) {
+        const id = String(repo.id);
+        if (!seen.has(id)) {
+          seen.set(id, {
+            id,
+            name: String(repo.full_name || repo.name),
+            private: Boolean(repo.private),
+          });
+        }
+      }
+    }
+    return Array.from(seen.values());
+  }
   const url =
-    provider === "github"
-      ? "https://api.github.com/user/repos?per_page=30&sort=updated"
-      : provider === "gitlab"
-        ? "https://gitlab.com/api/v4/projects?membership=true&per_page=30&order_by=last_activity_at"
-        : "https://api.bitbucket.org/2.0/repositories?role=member&pagelen=30&sort=-updated_on";
+    provider === "gitlab"
+      ? "https://gitlab.com/api/v4/projects?membership=true&per_page=30&order_by=last_activity_at"
+      : "https://api.bitbucket.org/2.0/repositories?role=member&pagelen=30&sort=-updated_on";
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${token.access_token}`,
