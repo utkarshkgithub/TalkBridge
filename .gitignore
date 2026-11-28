@@ -4,7 +4,6 @@ __pycache__/
 .venv/
 .pytest_cache/
 .env
-*.db
 .mypy_cache/
 .ruff_cache/
 backend/dist/
@@ -22,7 +21,3 @@ npm-debug.log*
 frontend/test-results/
 frontend/playwright-report/
 frontend/.sites-runtime/
-
-# Local authentication database journals
-*.db-shm
-*.db-wal

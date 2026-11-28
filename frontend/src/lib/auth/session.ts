@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { connection, type NextRequest } from "next/server";
 import { redirect } from "next/navigation";
-import { db, hash, secret, type User } from "./store";
+import { hash, query, secret, type User } from "./store";
 
 const DEV_ORIGINS = new Set([
   "http://127.0.0.1:3000",
@@ -59,11 +59,12 @@ export async function getUser(): Promise<User | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const user =
-    (db()
-      .prepare(
-        "SELECT u.* FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token=? AND s.expires>?",
+    (
+      await query<User>(
+        "SELECT u.* FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token=$1 AND s.expires>$2",
+        [hash(token), Date.now()],
       )
-      .get(hash(token), Date.now()) as User | undefined) || null;
+    ).rows[0] || null;
   return user && identityAllowed(user.id) ? user : null;
 }
 export async function requireUser() {
@@ -72,30 +73,30 @@ export async function requireUser() {
   return user;
 }
 export async function createSession(user: User) {
-  secret();
+  await secret();
   if (!identityAllowed(user.id))
     throw new Error(
       "This account is not authorized for this workspace. Contact the administrator.",
     );
-  db()
-    .prepare(
-      "INSERT INTO users VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,email=excluded.email",
-    )
-    .run(user.id, user.name, user.email, user.provider);
+  await query(
+    "INSERT INTO users (id, name, email, provider) VALUES ($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET name=excluded.name,email=excluded.email",
+    [user.id, user.name, user.email, user.provider],
+  );
   const jar = await cookies();
   const old = jar.get(SESSION_COOKIE)?.value;
-  if (old) db().prepare("DELETE FROM sessions WHERE token=?").run(hash(old));
-  db().prepare("DELETE FROM sessions WHERE expires<=?").run(Date.now());
+  if (old) await query("DELETE FROM sessions WHERE token=$1", [hash(old)]);
+  await query("DELETE FROM sessions WHERE expires<=$1", [Date.now()]);
   const token = randomBytes(32).toString("base64url");
-  db()
-    .prepare("INSERT INTO sessions VALUES (?,?,?)")
-    .run(hash(token), user.id, Date.now() + 7 * 86400_000);
+  await query("INSERT INTO sessions (token, user_id, expires) VALUES ($1,$2,$3)", [
+    hash(token),
+    user.id,
+    Date.now() + 7 * 86400_000,
+  ]);
   jar.set(SESSION_COOKIE, token, { ...cookieOptions, maxAge: 7 * 86400 });
 }
 export async function logout() {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
-  if (token)
-    db().prepare("DELETE FROM sessions WHERE token=?").run(hash(token));
+  if (token) await query("DELETE FROM sessions WHERE token=$1", [hash(token)]);
   jar.set(SESSION_COOKIE, "", { ...cookieOptions, maxAge: 0 });
 }

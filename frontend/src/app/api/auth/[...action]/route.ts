@@ -17,7 +17,7 @@ import {
   repositories,
   startOAuth,
 } from "@/lib/auth/oauth";
-import { db } from "@/lib/auth/store";
+import { query } from "@/lib/auth/store";
 
 function result(value: unknown, status = 200) {
   return NextResponse.json(value, {
@@ -88,17 +88,21 @@ export async function POST(
     const email = String(form.get("email") || "").slice(0, 254);
     const password = String(form.get("password") || "").slice(0, 256);
     const attemptKey = email.trim().toLowerCase() || "__empty__";
-    db().exec(
-      "CREATE TABLE IF NOT EXISTS demo_attempts (email TEXT PRIMARY KEY, count INTEGER NOT NULL, reset INTEGER NOT NULL)",
+    const now = Date.now();
+    await query(
+      `INSERT INTO demo_attempts (email, count, "reset")
+       VALUES ($1, 0, $2)
+       ON CONFLICT(email) DO UPDATE
+       SET count = CASE WHEN demo_attempts."reset" < $3 THEN 0 ELSE demo_attempts.count END,
+           "reset" = CASE WHEN demo_attempts."reset" < $3 THEN excluded."reset" ELSE demo_attempts."reset" END`,
+      [attemptKey, now + 900000, now],
     );
-    db()
-      .prepare(
-        "INSERT INTO demo_attempts VALUES (?,0,?) ON CONFLICT(email) DO UPDATE SET count=CASE WHEN reset<? THEN 0 ELSE count END,reset=CASE WHEN reset<? THEN excluded.reset ELSE reset END",
+    const attempts = (
+      await query<{ count: number }>(
+        "SELECT count FROM demo_attempts WHERE email=$1",
+        [attemptKey],
       )
-      .run(attemptKey, Date.now() + 900000, Date.now(), Date.now());
-    const attempts = db()
-      .prepare("SELECT count FROM demo_attempts WHERE email=?")
-      .get(attemptKey) as { count: number };
+    ).rows[0];
     if (attempts.count >= 8)
       return fail(
         "Too many attempts. Try again in 15 minutes.",
@@ -116,14 +120,14 @@ export async function POST(
       digest(process.env.DEMO_AUTH_PASSWORD || "TalkBridgeDemo!2026"),
     );
     if (!correctEmail || !correctPassword) {
-      db()
-        .prepare("UPDATE demo_attempts SET count=count+1 WHERE email=?")
-        .run(attemptKey);
+      await query("UPDATE demo_attempts SET count=count+1 WHERE email=$1", [
+        attemptKey,
+      ]);
       return fail("Incorrect test email or password.", "/login", origin);
     }
-    db()
-      .prepare("UPDATE demo_attempts SET count=0 WHERE email=?")
-      .run(attemptKey);
+    await query("UPDATE demo_attempts SET count=0 WHERE email=$1", [
+      attemptKey,
+    ]);
     await createSession({
       id: "demo:local",
       name: "Demo developer",
@@ -138,10 +142,11 @@ export async function POST(
   const user = await getUser();
   if (action[0] === "disconnect") {
     if (!user) return result({ error: "Sign in required" }, 401);
-    db()
-      .prepare("DELETE FROM connections WHERE user_id=? AND provider=?")
-      .run(user.id, provider);
-    return result({ connections: connections(user.id) });
+    await query("DELETE FROM connections WHERE user_id=$1 AND provider=$2", [
+      user.id,
+      provider,
+    ]);
+    return result({ connections: await connections(user.id) });
   }
   if (action[0] !== "login" && action[0] !== "connect")
     return result({ error: "Not found" }, 404);

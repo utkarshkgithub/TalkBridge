@@ -8,10 +8,10 @@ import {
   expect,
   vi,
 } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { Pool } from "pg";
 import { NextRequest } from "next/server";
+
 const jar = vi.hoisted(() => new Map<string, string>());
 vi.mock("next/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/server")>()),
@@ -28,35 +28,55 @@ vi.mock("next/navigation", () => ({
     throw new Error(`redirect:${path}`);
   },
 }));
+
 let auth: typeof import("@/lib/auth/session");
 let store: typeof import("@/lib/auth/store");
 let oauth: typeof import("@/lib/auth/oauth");
 let routes: typeof import("@/app/api/auth/[...action]/route");
-const directory = mkdtempSync(join(tmpdir(), "talkbridge-auth-"));
+
+const baseDatabaseUrl = (
+  process.env.TEST_DATABASE_URL ||
+  process.env.DATABASE_URL ||
+  "postgresql://postgres:postgres@localhost:5432/talkbridge"
+).replace(/^postgresql\+psycopg:\/\//, "postgresql://");
+const testSchema = `tb_auth_test_${randomUUID().replaceAll("-", "")}`;
+
 beforeAll(async () => {
-  process.env.AUTH_DATABASE_PATH = join(directory, "auth.db");
+  const admin = new Pool({ connectionString: baseDatabaseUrl });
+  await admin.query(`CREATE SCHEMA ${testSchema}`);
+  await admin.end();
+  const url = new URL(baseDatabaseUrl);
+  url.searchParams.set("options", `-csearch_path=${testSchema}`);
+  process.env.DATABASE_URL = url.toString();
   process.env.AUTH_URL = "http://127.0.0.1:3000";
   process.env.AUTH_SECRET = "test-secret-with-at-least-32-characters";
   auth = await import("@/lib/auth/session");
   store = await import("@/lib/auth/store");
   oauth = await import("@/lib/auth/oauth");
   routes = await import("@/app/api/auth/[...action]/route");
+  await store.db();
 });
-beforeEach(() => {
+
+beforeEach(async () => {
   jar.clear();
-  store
-    .db()
-    .exec("DELETE FROM sessions; DELETE FROM connections; DELETE FROM flows;");
+  await store.query(
+    "DELETE FROM sessions; DELETE FROM connections; DELETE FROM flows; DELETE FROM demo_attempts; DELETE FROM users;",
+  );
   vi.stubEnv("NODE_ENV", "test");
   vi.stubEnv("DEMO_AUTH_ENABLED", "true");
 });
-afterAll(() => {
-  store.db().close();
-  rmSync(directory, { recursive: true, force: true });
+
+afterAll(async () => {
+  if (store) await store.closeDb();
+  const admin = new Pool({ connectionString: baseDatabaseUrl });
+  await admin.query(`DROP SCHEMA IF EXISTS ${testSchema} CASCADE`);
+  await admin.end();
 });
+
 const params = (...action: string[]) => ({
   params: Promise.resolve({ action }),
 });
+
 describe("authentication boundaries", () => {
   it("rejects cross-origin sign-in requests before creating a session", async () => {
     const response = await routes.POST(
@@ -69,6 +89,7 @@ describe("authentication boundaries", () => {
     expect(response.status).toBe(403);
     expect(await auth.getUser()).toBeNull();
   });
+
   it("rejects incorrect credentials and disables test login in production", async () => {
     const form = new FormData();
     form.set("email", "demo@talkbridge.local");
@@ -95,6 +116,7 @@ describe("authentication boundaries", () => {
     );
     expect(disabled.status).toBe(404);
   });
+
   it("hashes session tokens and revokes them on logout", async () => {
     await auth.createSession({
       id: "test:user",
@@ -104,23 +126,25 @@ describe("authentication boundaries", () => {
     });
     const token = jar.get(auth.SESSION_COOKIE)!;
     expect((await auth.getUser())?.id).toBe("test:user");
-    const row = store.db().prepare("SELECT token FROM sessions").get() as {
-      token: string;
-    };
+    const row = (
+      await store.query<{ token: string }>("SELECT token FROM sessions")
+    ).rows[0];
     expect(row.token).not.toBe(token);
     expect(row.token).toBe(store.hash(token));
     await auth.logout();
     jar.set(auth.SESSION_COOKIE, token);
     expect(await auth.getUser()).toBeNull();
   });
-  it("encrypts tokens with authenticated encryption", () => {
-    const encrypted = store.encrypt("private-provider-token");
+
+  it("encrypts tokens with authenticated encryption", async () => {
+    const encrypted = await store.encrypt("private-provider-token");
     expect(encrypted).not.toContain("private-provider-token");
-    expect(store.decrypt(encrypted)).toBe("private-provider-token");
+    expect(await store.decrypt(encrypted)).toBe("private-provider-token");
     const altered = Buffer.from(encrypted, "base64url");
     altered[15] ^= 1;
-    expect(() => store.decrypt(altered.toString("base64url"))).toThrow();
+    await expect(store.decrypt(altered.toString("base64url"))).rejects.toThrow();
   });
+
   it("binds OAuth state to the browser, expires it, and consumes it once", async () => {
     vi.stubEnv("GITHUB_CLIENT_ID", "test-client");
     vi.stubEnv("GITHUB_CLIENT_SECRET", "test-secret");
@@ -155,11 +179,12 @@ describe("authentication boundaries", () => {
     );
     expect(fetch).toHaveBeenCalledTimes(2);
     const expired = new URL(await oauth.startOAuth("github", "login"));
-    store.db().prepare("UPDATE flows SET expires=0").run();
+    await store.query("UPDATE flows SET expires=0");
     await expect(
       oauth.finishOAuth("github", expired.searchParams.get("state")!, "code"),
     ).rejects.toThrow("expired");
   });
+
   it("requires sign-in for connections and keeps repository tokens user-scoped", async () => {
     vi.stubEnv("GITHUB_CLIENT_ID", "test-client");
     vi.stubEnv("GITHUB_CLIENT_SECRET", "test-secret");
@@ -172,21 +197,21 @@ describe("authentication boundaries", () => {
       email: "",
       provider: "github",
     });
-    store
-      .db()
-      .prepare("INSERT INTO connections VALUES (?,?,?,?,?)")
-      .run(
-        "owner",
-        "github",
-        "owner",
-        store.encrypt(JSON.stringify({ access_token: "secret" })),
-        null,
-      );
+    await store.query("INSERT INTO connections VALUES ($1,$2,$3,$4,$5)", [
+      "owner",
+      "github",
+      "owner",
+      await store.encrypt(JSON.stringify({ access_token: "secret" })),
+      null,
+    ]);
     await expect(oauth.repositories("other-user", "github")).rejects.toThrow(
       "Connect your account",
     );
-    expect(JSON.stringify(oauth.connections("owner"))).not.toContain("secret");
+    expect(JSON.stringify(await oauth.connections("owner"))).not.toContain(
+      "secret",
+    );
   });
+
   it("rejects Google identities without a verified email", async () => {
     vi.stubEnv("GOOGLE_CLIENT_ID", "test-client");
     vi.stubEnv("GOOGLE_CLIENT_SECRET", "test-secret");
@@ -214,6 +239,7 @@ describe("authentication boundaries", () => {
     ).rejects.toThrow("Verify your Google email");
     expect(await auth.getUser()).toBeNull();
   });
+
   it("rejects a connection callback if the signed-in account changed", async () => {
     vi.stubEnv("GITHUB_CLIENT_ID", "test-client");
     vi.stubEnv("GITHUB_CLIENT_SECRET", "test-secret");
@@ -234,9 +260,10 @@ describe("authentication boundaries", () => {
     await expect(
       oauth.finishOAuth("github", url.searchParams.get("state")!, "code"),
     ).rejects.toThrow("session changed");
-    expect(oauth.connections("first")).toEqual([]);
-    expect(oauth.connections("second")).toEqual([]);
+    expect(await oauth.connections("first")).toEqual([]);
+    expect(await oauth.connections("second")).toEqual([]);
   });
+
   it("restricts production sessions to explicit workspace members", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("AUTH_ALLOWED_IDENTITIES", "github:allowed");
@@ -258,6 +285,7 @@ describe("authentication boundaries", () => {
     vi.stubEnv("AUTH_ALLOWED_IDENTITIES", "");
     expect(await auth.getUser()).toBeNull();
   });
+
   it("allows localhost and 127.0.0.1 origins in development when AUTH_URL is unset", async () => {
     const saved = process.env.AUTH_URL;
     delete process.env.AUTH_URL;
@@ -281,6 +309,7 @@ describe("authentication boundaries", () => {
       if (saved !== undefined) process.env.AUTH_URL = saved;
     }
   });
+
   it("deduplicates concurrent OAuth token refreshes per user and provider", async () => {
     vi.stubEnv("GITLAB_CLIENT_ID", "gl-id");
     vi.stubEnv("GITLAB_CLIENT_SECRET", "gl-secret");
@@ -290,21 +319,18 @@ describe("authentication boundaries", () => {
       email: "",
       provider: "github",
     });
-    store
-      .db()
-      .prepare("INSERT INTO connections VALUES (?,?,?,?,?)")
-      .run(
-        "gl-user",
-        "gitlab",
-        "gl-user",
-        store.encrypt(
-          JSON.stringify({
-            access_token: "old-access",
-            refresh_token: "old-refresh",
-          }),
-        ),
-        Date.now() - 1000,
-      );
+    await store.query("INSERT INTO connections VALUES ($1,$2,$3,$4,$5)", [
+      "gl-user",
+      "gitlab",
+      "gl-user",
+      await store.encrypt(
+        JSON.stringify({
+          access_token: "old-access",
+          refresh_token: "old-refresh",
+        }),
+      ),
+      Date.now() - 1000,
+    ]);
     let tokenCalls = 0;
     vi.stubGlobal(
       "fetch",

@@ -4,7 +4,7 @@ The public landing page is `/`. Sign in at `/login` to open `/dashboard`, `/revi
 
 ## Local setup
 
-Use Node.js 22.13 or newer. The authentication store uses Node's built-in SQLite module. Review artifacts remain in the backend PostgreSQL database.
+Use Node.js 22.13 or newer. Authentication state and review artifacts share the same PostgreSQL database via `DATABASE_URL`.
 
 ```bash
 npm ci
@@ -47,11 +47,11 @@ For deployment:
 1. Set an HTTPS `AUTH_URL` and register matching OAuth callbacks.
 2. Set `AUTH_SECRET` to at least 32 random characters, for example `openssl rand -hex 32`.
 3. Set `AUTH_ALLOWED_IDENTITIES` to the allowed immutable provider identities (for example `github:123456` or `google:123456789012345678901`). GitHub uses the numeric user `id`; Google uses the OpenID `sub`. Empty membership denies all production sign-ins.
-4. Persist `AUTH_DATABASE_PATH` and keep the same `AUTH_SECRET` across restarts. A single Node server instance with persistent disk is required by the current SQLite store. Ephemeral/serverless storage and multiple replicas need a shared database implementation first.
+4. Set `DATABASE_URL` to the shared PostgreSQL database (matching the backend) and keep the same `AUTH_SECRET` across restarts. Ephemeral/serverless storage and multiple replicas share state through PostgreSQL.
 5. Set the same random `DASHBOARD_API_KEY` (at least 32 characters) in the frontend and backend environments. Set backend `APP_ENV=prod` to enforce this requirement. Dashboard APIs then accept only the server gateway key. Keep the backend on a private network. Webhooks keep their independent HMAC authentication.
-6. Keep review data in PostgreSQL. Back up both databases and protect their filesystem permissions.
+6. Keep backups enabled and protect database credentials.
 
-Without an explicit `AUTH_SECRET`, development persists a generated local encryption key in `data/auth.db`. Do not commit this database. Production cookies use `Secure`, and test credentials are disabled.
+Without an explicit `AUTH_SECRET`, development persists a generated local encryption key in the PostgreSQL `settings` table. Production cookies use `Secure`, and test credentials are disabled.
 
 The pipeline screen displays the architecture and recorded stage timings. It does not claim to be a live CI runner. Replay data is labeled illustrative.
 

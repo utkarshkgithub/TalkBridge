@@ -1,6 +1,6 @@
 import { randomBytes, createHash } from "node:crypto";
 import { cookies } from "next/headers";
-import { db, encrypt, decrypt, hash, type Connection } from "./store";
+import { decrypt, encrypt, hash, query, type Connection } from "./store";
 import { appUrl, cookieOptions, createSession, getUser } from "./session";
 
 export const providers = ["github", "google", "gitlab", "bitbucket"] as const;
@@ -99,10 +99,10 @@ export async function startOAuth(
   const state = randomBytes(32).toString("base64url");
   const browser = randomBytes(32).toString("base64url");
   const verifier = randomBytes(32).toString("base64url");
-  db().prepare("DELETE FROM flows WHERE expires<=?").run(Date.now());
-  db()
-    .prepare("INSERT INTO flows VALUES (?,?,?,?,?,?,?)")
-    .run(
+  await query("DELETE FROM flows WHERE expires<=$1", [Date.now()]);
+  await query(
+    "INSERT INTO flows (state, browser, provider, intent, user_id, verifier, expires) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+    [
       hash(state),
       hash(browser),
       provider,
@@ -110,7 +110,8 @@ export async function startOAuth(
       intent === "connect" ? user!.id : null,
       verifier,
       Date.now() + 600_000,
-    );
+    ],
+  );
   (await cookies()).set("talkbridge_oauth", browser, {
     ...cookieOptions,
     maxAge: 600,
@@ -147,12 +148,12 @@ export async function finishOAuth(
   const browser = jar.get("talkbridge_oauth")?.value;
   if (!browser || !state || !code)
     throw new Error("Authorization expired. Start again.");
-  const flow = db()
-    .prepare(
-      "DELETE FROM flows WHERE state=? AND browser=? AND provider=? AND expires>? RETURNING *",
+  const flow = (
+    await query<{ intent: string; user_id: string | null; verifier: string }>(
+      "DELETE FROM flows WHERE state=$1 AND browser=$2 AND provider=$3 AND expires>$4 RETURNING *",
+      [hash(state), hash(browser), provider, Date.now()],
     )
-    .get(hash(state), hash(browser), provider, Date.now()) as
-    { intent: string; user_id: string | null; verifier: string } | undefined;
+  ).rows[0];
   jar.set("talkbridge_oauth", "", { ...cookieOptions, maxAge: 0 });
   if (!flow) throw new Error("Authorization expired. Start again.");
   const current = await getUser();
@@ -203,23 +204,31 @@ export async function finishOAuth(
   const expires = token.expires_in
     ? Date.now() + token.expires_in * 1000
     : null;
-  db()
-    .prepare(
-      "INSERT INTO connections VALUES (?,?,?,?,?) ON CONFLICT(user_id,provider) DO UPDATE SET account=excluded.account,credentials=excluded.credentials,expires=excluded.expires",
-    )
-    .run(
+  await query(
+    "INSERT INTO connections (user_id, provider, account, credentials, expires) VALUES ($1,$2,$3,$4,$5) ON CONFLICT(user_id,provider) DO UPDATE SET account=excluded.account,credentials=excluded.credentials,expires=excluded.expires",
+    [
       current!.id,
       provider,
       account,
-      encrypt(JSON.stringify(token)),
+      await encrypt(JSON.stringify(token)),
       expires,
-    );
+    ],
+  );
   return "/connections?connected=" + provider;
 }
-export function connections(userId: string) {
-  return db()
-    .prepare("SELECT provider,account,expires FROM connections WHERE user_id=?")
-    .all(userId) as Connection[];
+export async function connections(userId: string): Promise<Connection[]> {
+  const { rows } = await query<{
+    provider: string;
+    account: string;
+    expires: string | number | null;
+  }>("SELECT provider,account,expires FROM connections WHERE user_id=$1", [
+    userId,
+  ]);
+  return rows.map((row) => ({
+    provider: row.provider,
+    account: row.account,
+    expires: row.expires == null ? null : Number(row.expires),
+  }));
 }
 type TokenSet = {
   access_token: string;
@@ -249,16 +258,15 @@ async function refreshConnectionToken(
         ...fresh,
         refresh_token: fresh.refresh_token || token.refresh_token,
       };
-      db()
-        .prepare(
-          "UPDATE connections SET credentials=?,expires=? WHERE user_id=? AND provider=?",
-        )
-        .run(
-          encrypt(JSON.stringify(updated)),
+      await query(
+        "UPDATE connections SET credentials=$1,expires=$2 WHERE user_id=$3 AND provider=$4",
+        [
+          await encrypt(JSON.stringify(updated)),
           updated.expires_in ? Date.now() + updated.expires_in * 1000 : null,
           userId,
           provider,
-        );
+        ],
+      );
       return updated;
     } finally {
       pendingRefreshes.delete(key);
@@ -270,15 +278,17 @@ async function refreshConnectionToken(
 
 export async function repositories(userId: string, provider: Provider) {
   if (provider === "google") throw new Error("Choose a repository provider.");
-  const connection = db()
-    .prepare(
-      "SELECT credentials,expires FROM connections WHERE user_id=? AND provider=?",
+  const connection = (
+    await query<{ credentials: string; expires: string | number | null }>(
+      "SELECT credentials,expires FROM connections WHERE user_id=$1 AND provider=$2",
+      [userId, provider],
     )
-    .get(userId, provider) as
-    { credentials: string; expires: number | null } | undefined;
+  ).rows[0];
   if (!connection) throw new Error("Connect your account first.");
-  let token = JSON.parse(decrypt(connection.credentials)) as TokenSet;
-  if (connection.expires && connection.expires < Date.now() + 60000) {
+  let token = JSON.parse(await decrypt(connection.credentials)) as TokenSet;
+  const expiresAt =
+    connection.expires == null ? null : Number(connection.expires);
+  if (expiresAt && expiresAt < Date.now() + 60000) {
     if (!token.refresh_token)
       throw new Error(
         "This connection expired. Disconnect and reconnect your account.",

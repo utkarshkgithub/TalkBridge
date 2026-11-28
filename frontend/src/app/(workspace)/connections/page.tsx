@@ -22,7 +22,7 @@ async function Content({ searchParams }: PageProps<"/connections">) {
         : undefined;
   return (
     <Connections
-      initial={connections(user.id)}
+      initial={await connections(user.id)}
       providers={availableProviders()}
       message={message}
     />
