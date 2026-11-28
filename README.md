@@ -69,7 +69,7 @@ and token boundaries. To review style changes, set `ENFORCE_STYLE_DIFF=true` or 
 
 Set `REVIEW_ENABLED=true` in the backend environment to run Stages 0 through 4. Configure
 `VLLM_BASE_URL`, `VLLM_MODEL`, and optionally `VLLM_API_KEY` for an existing inference server.
-`VLLM_SCHEMA_MODE=structured_outputs` supports current vLLM; `guided_json` supports older servers.
+`VLLM_SCHEMA_MODE=response_format` (default) supports both vLLM and OpenAI-compatible cloud APIs (set `VLLM_DISABLE_THINKING=false` for non-vLLM APIs); `structured_outputs` and `guided_json` remain supported for vLLM.
 The default, free model is Qwen3-8B-AWQ without project LoRA fine-tuning.
 See [evaluation/README.md](./evaluation/README.md) for the optional NVIDIA Docker service,
 live cache tests, held-out data provenance, and baseline commands.

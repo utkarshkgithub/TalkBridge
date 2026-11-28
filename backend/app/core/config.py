@@ -46,7 +46,10 @@ class Settings(BaseSettings):
     vllm_base_url: str = "http://localhost:8001/v1"
     vllm_api_key: SecretStr = SecretStr("")
     vllm_model: str = "Qwen/Qwen3-8B-AWQ"
-    vllm_schema_mode: Literal["guided_json", "structured_outputs"] = "structured_outputs"
+    vllm_schema_mode: Literal["guided_json", "structured_outputs", "response_format"] = (
+        "response_format"
+    )
+    vllm_disable_thinking: bool = True
     vllm_timeout_seconds: float = Field(default=120, gt=0)
     vllm_max_model_len: int = Field(default=16384, ge=1024)
     vllm_max_tokens: int = Field(default=4096, ge=256)

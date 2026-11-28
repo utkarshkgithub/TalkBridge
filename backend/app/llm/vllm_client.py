@@ -40,12 +40,22 @@ class VLLMClient:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": self.settings.vllm_max_tokens,
-            "chat_template_kwargs": {"enable_thinking": False},
         }
+        if self.settings.vllm_disable_thinking:
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
         if self.settings.vllm_schema_mode == "guided_json":
             payload["guided_json"] = schema.model_json_schema()
-        else:
+        elif self.settings.vllm_schema_mode == "structured_outputs":
             payload["structured_outputs"] = {"json": schema.model_json_schema()}
+        else:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema.__name__,
+                    "strict": True,
+                    "schema": schema.model_json_schema(),
+                },
+            }
         headers = {}
         if key := self.settings.vllm_api_key.get_secret_value():
             headers["Authorization"] = f"Bearer {key}"

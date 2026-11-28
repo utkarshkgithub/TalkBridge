@@ -24,7 +24,7 @@ def test_prefix_identical_and_isolated(bundle):
         build_finder_suffix("B", bundle.sast_hints)
 
 
-@pytest.mark.parametrize("mode", ["guided_json", "structured_outputs"])
+@pytest.mark.parametrize("mode", ["guided_json", "structured_outputs", "response_format"])
 @pytest.mark.parametrize("schema", [FinderOutput, VerifierOutput])
 def test_schema_and_usage(mode, schema):
     output = (
@@ -42,14 +42,27 @@ def test_schema_and_usage(mode, schema):
     async def run():
         def respond(request):
             body = json.loads(request.content)
-            actual = (
-                body["guided_json"] if mode == "guided_json" else body["structured_outputs"]["json"]
-            )
+            if mode == "guided_json":
+                actual = body["guided_json"]
+            elif mode == "structured_outputs":
+                actual = body["structured_outputs"]["json"]
+            else:
+                assert body["response_format"]["type"] == "json_schema"
+                assert body["response_format"]["json_schema"]["strict"] is True
+                actual = body["response_format"]["json_schema"]["schema"]
             assert actual == schema.model_json_schema()
+            assert ("chat_template_kwargs" in body) is (mode != "response_format")
             return httpx.Response(200, json=completion(output))
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
-            client = VLLMClient(Settings(_env_file=None, vllm_schema_mode=mode), http)
+            client = VLLMClient(
+                Settings(
+                    _env_file=None,
+                    vllm_schema_mode=mode,
+                    vllm_disable_thinking=mode != "response_format",
+                ),
+                http,
+            )
             result, usage = await client.generate("prompt", schema, stage="finder", role="A")
             assert result == output
             assert usage.prompt_tokens == 100 and usage.cached_tokens == 12
@@ -137,13 +150,22 @@ def test_live_four_finders_and_prefix_ttft(bundle):
                 "temperature": 0,
                 "max_tokens": 256,
                 "stream": True,
-                "chat_template_kwargs": {"enable_thinking": False},
             }
-            payload.update(
-                {"guided_json": FinderOutput.model_json_schema()}
-                if settings.vllm_schema_mode == "guided_json"
-                else {"structured_outputs": {"json": FinderOutput.model_json_schema()}}
-            )
+            if settings.vllm_disable_thinking:
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
+            if settings.vllm_schema_mode == "guided_json":
+                payload["guided_json"] = FinderOutput.model_json_schema()
+            elif settings.vllm_schema_mode == "structured_outputs":
+                payload["structured_outputs"] = {"json": FinderOutput.model_json_schema()}
+            else:
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "FinderOutput",
+                        "strict": True,
+                        "schema": FinderOutput.model_json_schema(),
+                    },
+                }
             key = settings.vllm_api_key.get_secret_value()
             headers = {"Authorization": f"Bearer {key}"} if key else {}
 

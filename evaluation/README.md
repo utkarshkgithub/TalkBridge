@@ -22,9 +22,9 @@ A remote server is also supported with `VLLM_BASE_URL`, `VLLM_MODEL` and optiona
 `VLLM_API_KEY`. Keep the endpoint private, or use an SSH tunnel. The Compose port binds to
 loopback. No paid API or automatic cloud provisioning is required.
 
-vLLM 0.12 removed `guided_json`. The default `VLLM_SCHEMA_MODE=structured_outputs` sends the
-same Pydantic JSON schema through the supported replacement. Legacy vLLM servers can use
-`VLLM_SCHEMA_MODE=guided_json`. Both transport modes have offline contract tests.
+vLLM 0.12 removed `guided_json`. `VLLM_SCHEMA_MODE=response_format` (default) works across both vLLM
+and OpenAI-compatible cloud APIs; `structured_outputs` (vLLM `>=0.12`) and `guided_json` (legacy
+vLLM) are also supported, and `VLLM_DISABLE_THINKING=false` omits `chat_template_kwargs`.
 References: [structured outputs](https://docs.vllm.ai/en/v0.15.0/features/structured_outputs/),
 [model and license](https://huggingface.co/Qwen/Qwen3-8B-AWQ).
 
